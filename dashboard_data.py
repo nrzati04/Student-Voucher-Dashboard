@@ -120,7 +120,7 @@ def load_routes(path_text: str) -> pd.DataFrame:
                 df[col] = 0
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON"):
+        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "EVENT"):
             if col not in df:
                 df[col] = ""
             df[col] = df[col].map(clean)
@@ -290,13 +290,13 @@ def filtered_school_list(df: pd.DataFrame, key: str):
     cols = [
         c for c in [
             "MANAGER", "LEVEL", "NAMA SEKOLAH", "QTY GIVEN", "STAFF NAME",
-            "CONTACT NUMBER", "EMAIL ADDRESS", "STATUS", "REJECTION REASON"
+            "CONTACT NUMBER", "EMAIL ADDRESS", "STATUS", "REJECTION REASON", "EVENT"
         ] if c in result.columns
     ]
     st.dataframe(result[cols], use_container_width=True, hide_index=True)
 
 
-def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str):
+def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str, event: str = ""):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -319,6 +319,7 @@ def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: s
         "EMAIL ADDRESS": email,
         "STATUS": status,
         "REJECTION REASON": reason,
+        "EVENT": event,
         "DATE": date_value,
     }
     for name, value in values.items():
