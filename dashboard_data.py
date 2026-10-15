@@ -117,8 +117,11 @@ def load_routes(path_text: str) -> pd.DataFrame:
 
         for col in ("TOTAL", "QTY GIVEN"):
             if col not in df:
-                df[col] = 0
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                df[col] = pd.NA if col == "QTY GIVEN" else 0
+            numeric_values = pd.to_numeric(df[col], errors="coerce")
+            if col == "QTY GIVEN":
+                df["QTY NOT RECORDED"] = numeric_values.isna()
+            df[col] = numeric_values.fillna(0)
 
         for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "EVENT", "PERSON MET"):
             if col not in df:
@@ -293,10 +296,16 @@ def filtered_school_list(df: pd.DataFrame, key: str):
             "CONTACT NUMBER", "EMAIL ADDRESS", "STATUS", "REJECTION REASON", "EVENT", "PERSON MET"
         ] if c in result.columns
     ]
-    st.dataframe(result[cols], use_container_width=True, hide_index=True)
+    display = result[cols].copy()
+    if "QTY GIVEN" in display and "QTY NOT RECORDED" in result:
+        display["QTY GIVEN"] = [
+            "Not recorded" if missing else value
+            for missing, value in zip(result["QTY NOT RECORDED"], result["QTY GIVEN"])
+        ]
+    st.dataframe(display, use_container_width=True, hide_index=True)
 
 
-def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str, event: str = "", person_met: str = ""):
+def save_school_update(row: pd.Series, status: str, qty: int | None, pic: str, phone: str, email: str, reason: str, event: str = "", person_met: str = ""):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
