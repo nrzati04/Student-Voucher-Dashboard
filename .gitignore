@@ -1,0 +1,8 @@
+Student_Voucher_Route_Plan_2026_v3.xlsx
+*.xlsx
+*.json
+.streamlit/secrets.toml
+*service-account*.json
+__pycache__/
+.venv/
+.env
