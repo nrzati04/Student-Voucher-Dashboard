@@ -81,6 +81,11 @@ with record_panel:
                     value=str(row.get("REJECTION REASON", "") or ""),
                     placeholder="Only required if the outcome is Rejected",
                 )
+                event = st.text_input(
+                    "Event (optional)",
+                    value=str(row.get("EVENT", "") or ""),
+                    placeholder="e.g. School carnival",
+                )
             with recipient_column:
                 st.markdown("**Receiving contact**")
                 pic = st.text_input(
@@ -113,7 +118,10 @@ with record_panel:
                 for error in errors: st.error(error)
             else:
                 try:
-                    save_school_update(row, status, int(qty), pic.strip(), phone.strip(), email.strip(), reason.strip())
+                    save_school_update(
+                        row, status, int(qty), pic.strip(), phone.strip(), email.strip(),
+                        reason.strip(), event.strip(),
+                    )
                     st.success(f"Record saved for {row['NAMA SEKOLAH']}.")
                     st.rerun()
                 except PermissionError:
@@ -124,6 +132,8 @@ with record_panel:
     with view_tab:
         st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
         st.markdown(f"**Recipient / PIC:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
+        if row.get("EVENT", ""):
+            st.markdown(f"**Event:** {row['EVENT']}")
         if row.get("REJECTION REASON", ""):
             st.markdown(f"**Rejection reason:** {row['REJECTION REASON']}")
         if row.get("DATE", ""):
