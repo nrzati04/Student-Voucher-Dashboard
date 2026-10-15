@@ -90,22 +90,23 @@ with record_panel:
             else person_met_choice
         )
 
+        st.markdown("**Distribution details**")
+        status = st.selectbox(
+            "Outcome",
+            ["Pending", "Received", "Rejected"],
+            index=["Pending", "Received", "Rejected"].index(default_status),
+            help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
+            key=f"outcome_{row['_EXCEL_ROW']}",
+        )
+        quantity_not_recorded = st.checkbox(
+            "Voucher quantity not recorded",
+            value=bool(row.get("QTY NOT RECORDED", False)),
+            help="Use this when the school received vouchers but the quantity is unavailable.",
+            key=f"qty_not_recorded_{row['_EXCEL_ROW']}",
+        )
         with st.form("update_form"):
             outcome_column, recipient_column = st.columns(2, gap="large")
             with outcome_column:
-                st.markdown("**Distribution details**")
-                status = st.selectbox(
-                    "Outcome",
-                    ["Pending", "Received", "Rejected"],
-                    index=["Pending", "Received", "Rejected"].index(default_status),
-                    help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
-                )
-                quantity_not_recorded = st.checkbox(
-                    "Voucher quantity not recorded",
-                    value=bool(row.get("QTY NOT RECORDED", False)),
-                    help="Use this when the school received vouchers but the quantity is unavailable.",
-                    key=f"qty_not_recorded_{row['_EXCEL_ROW']}",
-                )
                 qty = st.number_input(
                     "Voucher quantity delivered",
                     min_value=0,
