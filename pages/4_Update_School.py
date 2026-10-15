@@ -99,9 +99,9 @@ with record_panel:
                     placeholder="e.g. 012-345 6789",
                 )
                 email = st.text_input(
-                    "School email address",
+                    "School email address (optional)",
                     value=str(row.get("EMAIL ADDRESS", "") or ""),
-                    placeholder="e.g. office@school.edu.my",
+                    placeholder="Leave blank if the school did not provide one",
                 )
             save = st.form_submit_button("Save record", type="primary", use_container_width=True)
 
@@ -111,8 +111,8 @@ with record_panel:
                 if int(qty) <= 0: errors.append("Enter the number of vouchers delivered.")
                 if not pic.strip(): errors.append("Enter the recipient or PIC name.")
                 if not phone.strip(): errors.append("Enter a contact number.")
-                if not email.strip(): errors.append("Enter an email address.")
-                elif not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()): errors.append("Enter a valid email address.")
+                if email.strip() and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()):
+                    errors.append("Enter a valid email address, or leave the field blank.")
             if status == "Rejected" and not reason.strip(): errors.append("Enter the reason for rejection.")
             if errors:
                 for error in errors: st.error(error)
