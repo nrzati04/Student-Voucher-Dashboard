@@ -100,11 +100,18 @@ with record_panel:
                     index=["Pending", "Received", "Rejected"].index(default_status),
                     help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
                 )
+                quantity_not_recorded = st.checkbox(
+                    "Voucher quantity not recorded",
+                    value=bool(row.get("QTY NOT RECORDED", False)),
+                    help="Use this when the school received vouchers but the quantity is unavailable.",
+                    key=f"qty_not_recorded_{row['_EXCEL_ROW']}",
+                )
                 qty = st.number_input(
                     "Voucher quantity delivered",
                     min_value=0,
                     value=int(row["QTY GIVEN"]),
                     step=1,
+                    disabled=quantity_not_recorded,
                     help="Enter the number of vouchers handed to the school.",
                 )
                 reason = st.text_input(
@@ -139,7 +146,6 @@ with record_panel:
         if save:
             errors = []
             if status == "Received":
-                if int(qty) <= 0: errors.append("Enter the number of vouchers delivered.")
                 if not pic.strip(): errors.append("Enter the recipient or PIC name.")
                 if not phone.strip(): errors.append("Enter a contact number.")
                 if email.strip() and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()):
@@ -152,7 +158,7 @@ with record_panel:
             else:
                 try:
                     save_school_update(
-                        row, status, int(qty), pic.strip(), phone.strip(), email.strip(),
+                        row, status, None if quantity_not_recorded else int(qty), pic.strip(), phone.strip(), email.strip(),
                         reason.strip(), event.strip(), person_met_value,
                     )
                     st.success(f"Record saved for {row['NAMA SEKOLAH']}.")
@@ -163,7 +169,8 @@ with record_panel:
                     st.error(f"Unable to save the record: {exc}")
 
     with view_tab:
-        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
+        voucher_display = "Not recorded" if row.get("QTY NOT RECORDED", False) else f"{int(row['QTY GIVEN']):,}"
+        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Result:** {status_label}  \n**Vouchers delivered:** {voucher_display}")
         st.markdown(f"**Recipient / PIC:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
         if row.get("EVENT", ""):
             st.markdown(f"**Event:** {row['EVENT']}")
