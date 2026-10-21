@@ -11,7 +11,7 @@ primary = route_filters(primary, "primary")
 st.markdown("Primary school routes only.")
 metric_cards(primary, include_vouchers=False)
 
-st.subheader("Primary school list")
-filtered_school_list(primary, "primary")
+with st.expander("Primary school list", expanded=False):
+    filtered_school_list(primary, "primary")
 
 render_footer()
