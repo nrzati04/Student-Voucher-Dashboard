@@ -69,12 +69,18 @@ with record_panel:
                     index=["Pending", "Received", "Rejected"].index(default_status),
                     help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
                 )
+                qty_not_provided = st.checkbox(
+                    "Voucher quantity was not provided",
+                    value=str(row.get("QTY NOT PROVIDED", "") or "").strip().lower() in {"yes", "true", "1"},
+                    help="Use this when the school confirmed receipt but did not share the voucher amount.",
+                )
                 qty = st.number_input(
                     "Voucher quantity delivered",
                     min_value=0,
                     value=int(row["QTY GIVEN"]),
                     step=1,
                     help="Enter the number of vouchers handed to the school.",
+                    disabled=qty_not_provided,
                 )
                 reason = st.text_input(
                     "Reason for rejection (if applicable)",
@@ -118,7 +124,7 @@ with record_panel:
         if save:
             errors = []
             if status == "Received":
-                if int(qty) <= 0: errors.append("Enter the number of vouchers delivered.")
+                if int(qty) <= 0 and not qty_not_provided: errors.append("Enter the number of vouchers delivered or mark that the amount was not provided.")
                 if email.strip() and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()): errors.append("Enter a valid email address.")
             if status == "Rejected" and not reason.strip(): errors.append("Enter the reason for rejection.")
             if errors:
@@ -127,7 +133,7 @@ with record_panel:
                 try:
                     save_school_update(
                         row, status, int(qty), recipient_name.strip(), phone.strip(), email.strip(),
-                        reason.strip(), person_met, event_remarks.strip(),
+                        reason.strip(), person_met, event_remarks.strip(), qty_not_provided,
                     )
                     st.success(f"Record saved for {row['NAMA SEKOLAH']}.")
                     st.rerun()
@@ -137,7 +143,9 @@ with record_panel:
                     st.error(f"Unable to save the record: {exc}")
 
     with view_tab:
-        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Manager:** {manager}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
+        saved_qty_not_provided = str(row.get("QTY NOT PROVIDED", "") or "").strip().lower() in {"yes", "true", "1"}
+        quantity_display = "Not provided" if saved_qty_not_provided else f"{int(row['QTY GIVEN']):,}"
+        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Manager:** {manager}  \n**Result:** {status_label}  \n**Vouchers delivered:** {quantity_display}")
         st.markdown(f"**Person met:** {row.get('PERSON MET', '') or '—'}  \n**Name:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
         if row.get("REJECTION REASON", ""):
             st.markdown(f"**Rejection reason:** {row['REJECTION REASON']}")
