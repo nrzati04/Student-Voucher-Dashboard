@@ -362,6 +362,6 @@ def render_footer():
     st.markdown("""
     <div class="usp-footer">
         <strong>US Pizza Malaysia</strong> · Student Voucher Programme 2026<br>
-        
+        © 2026 US Pizza Malaysia. All rights reserved.
     </div>
     """, unsafe_allow_html=True)
