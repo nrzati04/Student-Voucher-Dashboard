@@ -7,10 +7,13 @@ from styles import render_footer
 routes = page_setup("Manager / PIC")
 
 managers = sorted(routes["MANAGER"].dropna().unique().tolist())
-selected = st.selectbox("Select manager", managers)
+manager_col, region_col = st.columns(2)
+with manager_col:
+    selected = st.selectbox("Select manager", managers)
 
 part = routes[routes["MANAGER"] == selected]
-part = route_filters(part, "manager_page", include_manager=False)
+with region_col:
+    part = route_filters(part, "manager_page", include_manager=False)
 st.markdown(f"### {selected}")
 metric_cards(part, include_vouchers=False)
 
