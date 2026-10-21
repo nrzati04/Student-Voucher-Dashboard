@@ -64,15 +64,6 @@ with record_panel:
             outcome_column, recipient_column = st.columns(2, gap="large")
             with outcome_column:
                 st.markdown("**Distribution details**")
-                assignees = sorted(routes["ASSIGNED PIC"].dropna().astype(str).unique().tolist())
-                if current_assignee not in assignees:
-                    assignees.append(current_assignee)
-                assigned_pic = st.selectbox(
-                    "Assigned person in charge",
-                    assignees,
-                    index=assignees.index(current_assignee),
-                    help="This changes the person responsible for this school only. The route manager remains unchanged.",
-                )
                 status = st.selectbox(
                     "Outcome",
                     ["Pending", "Received", "Rejected"],
@@ -89,22 +80,37 @@ with record_panel:
                 reason = st.text_input(
                     "Reason for rejection (if applicable)",
                     value=str(row.get("REJECTION REASON", "") or ""),
-                    placeholder="Only required if the outcome is Rejected",
+                    placeholder="Optional note about the rejection",
+                )
+                event_remarks = st.text_area(
+                    "Event remarks (optional)",
+                    value=str(row.get("EVENT REMARKS", "") or ""),
+                    placeholder="Add any notes about the school event or visit",
+                    height=90,
                 )
             with recipient_column:
-                st.markdown("**Receiving contact**")
-                pic = st.text_input(
-                    "Name of person receiving vouchers",
+                st.markdown("**Person met and contact (optional)**")
+                person_options = ["Not recorded", "Teacher", "Principal", "PK HEM", "PK Koko", "Officer", "Guard", "PK1", "Other"]
+                saved_person_met = str(row.get("PERSON MET", "") or "Not recorded")
+                if saved_person_met not in person_options:
+                    person_options.append(saved_person_met)
+                person_met = st.selectbox(
+                    "Person met",
+                    person_options,
+                    index=person_options.index(saved_person_met),
+                )
+                recipient_name = st.text_input(
+                    "Name of person met (optional)",
                     value=str(row.get("STAFF NAME", "") or ""),
-                    placeholder="e.g. School administrator",
+                    placeholder="e.g. Puan Aina",
                 )
                 phone = st.text_input(
-                    "School contact number",
+                    "Contact number (optional)",
                     value=str(row.get("CONTACT NUMBER", "") or ""),
                     placeholder="e.g. 012-345 6789",
                 )
                 email = st.text_input(
-                    "School email address",
+                    "Email address (optional)",
                     value=str(row.get("EMAIL ADDRESS", "") or ""),
                     placeholder="e.g. office@school.edu.my",
                 )
@@ -114,16 +120,16 @@ with record_panel:
             errors = []
             if status == "Received":
                 if int(qty) <= 0: errors.append("Enter the number of vouchers delivered.")
-                if not pic.strip(): errors.append("Enter the recipient or PIC name.")
-                if not phone.strip(): errors.append("Enter a contact number.")
-                if not email.strip(): errors.append("Enter an email address.")
-                elif not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()): errors.append("Enter a valid email address.")
+                if email.strip() and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()): errors.append("Enter a valid email address.")
             if status == "Rejected" and not reason.strip(): errors.append("Enter the reason for rejection.")
             if errors:
                 for error in errors: st.error(error)
             else:
                 try:
-                    save_school_update(row, status, int(qty), pic.strip(), phone.strip(), email.strip(), reason.strip(), assigned_pic)
+                    save_school_update(
+                        row, status, int(qty), recipient_name.strip(), phone.strip(), email.strip(),
+                        reason.strip(), current_assignee, person_met, event_remarks.strip(),
+                    )
                     st.success(f"Record saved for {row['NAMA SEKOLAH']}.")
                     st.rerun()
                 except PermissionError:
@@ -133,9 +139,11 @@ with record_panel:
 
     with view_tab:
         st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Assigned PIC:** {current_assignee}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
-        st.markdown(f"**Recipient / PIC:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
+        st.markdown(f"**Person met:** {row.get('PERSON MET', '') or '—'}  \n**Name:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
         if row.get("REJECTION REASON", ""):
             st.markdown(f"**Rejection reason:** {row['REJECTION REASON']}")
+        if row.get("EVENT REMARKS", ""):
+            st.markdown(f"**Event remarks:** {row['EVENT REMARKS']}")
         if row.get("DATE", ""):
             st.caption(f"Date recorded: {row['DATE']}")
 
@@ -144,7 +152,7 @@ with record_panel:
         confirm = st.checkbox("Confirm clearing this entry", key=f"confirm_clear_{row['_EXCEL_ROW']}")
         if st.button("Clear distribution entry", disabled=not confirm):
             try:
-                save_school_update(row, "Pending", 0, "", "", "", "", current_assignee)
+                save_school_update(row, "Pending", 0, "", "", "", "", current_assignee, "", "")
                 st.success("Distribution entry cleared.")
                 st.rerun()
             except PermissionError:
