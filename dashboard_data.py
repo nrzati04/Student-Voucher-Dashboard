@@ -316,7 +316,7 @@ def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
     return result, (region, manager), status
 
 
-def route_filters(df: pd.DataFrame, key: str, include_manager: bool = True) -> pd.DataFrame:
+def route_filters(df: pd.DataFrame, key: str, include_manager: bool = True, show_count: bool = True) -> pd.DataFrame:
     """Filter a school-level or manager page by region and, when needed, manager."""
     if include_manager:
         region_col, manager_col = st.columns([1, 1.4])
@@ -335,7 +335,8 @@ def route_filters(df: pd.DataFrame, key: str, include_manager: bool = True) -> p
         if manager != "All":
             result = result[result["MANAGER"] == manager]
 
-    st.caption(f"Showing {len(result):,} schools · {region} · {manager}")
+    if show_count:
+        st.caption(f"Showing {len(result):,} schools · {region} · {manager}")
     return result
 
 
