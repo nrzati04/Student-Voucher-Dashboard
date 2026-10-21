@@ -138,7 +138,7 @@ def load_routes(path_text: str) -> pd.DataFrame:
                 df[col] = 0
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "PERSON MET", "EVENT REMARKS"):
+        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "PERSON MET", "EVENT REMARKS", "QTY NOT PROVIDED"):
             if col not in df:
                 df[col] = ""
             df[col] = df[col].map(clean)
@@ -492,6 +492,7 @@ def filtered_school_list(
 def save_school_update(
     row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str,
     reason: str, person_met: str = "", event_remarks: str = "",
+    qty_not_provided: bool = False,
 ):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
@@ -508,6 +509,7 @@ def save_school_update(
         "DATE": date_value,
         "PERSON MET": person_met,
         "EVENT REMARKS": event_remarks,
+        "QTY NOT PROVIDED": "Yes" if qty_not_provided else "",
     }
 
     if google_sheets_enabled():
