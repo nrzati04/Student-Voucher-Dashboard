@@ -233,12 +233,11 @@ def apply_theme():
         position: static;
         margin: 2.5rem 0 0;
         padding: 16px 20px;
-        width: 100vw;
-        margin-left: calc(50% - 50vw);
+        width: 100%;
         box-sizing: border-box;
         background: #111111;
         color: #ffffff;
-        border-radius: 0;
+        border-radius: 12px;
         text-align: center;
         font-size: 0.85rem;
     }
@@ -255,14 +254,9 @@ def apply_theme():
     .st-key-usp_topnav {
         position: sticky;
         top: 0;
-        left: 0;
         z-index: 999;
-        width: 100vw !important;
-        min-width: 100vw !important;
-        max-width: none !important;
-        margin-left: calc(50% - 50vw);
+        width: 100%;
         box-sizing: border-box;
-        flex-shrink: 0;
         background: #ffffff;
         padding: 0.8rem 1.2rem;
         border-bottom: 3px solid #C8202F;
