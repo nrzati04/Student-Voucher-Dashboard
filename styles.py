@@ -37,6 +37,7 @@ def apply_theme():
     }
     .main .block-container {
         min-height: calc(100vh - 2rem);
+        padding-bottom: 7rem;
     }
     .main .block-container > div[data-testid="stVerticalBlock"] {
         min-height: calc(100vh - 2rem);
@@ -246,13 +247,18 @@ def apply_theme():
 
     /* ===== Footer ===== */
     .usp-footer {
-        margin-top: 2.5rem;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1000;
+        margin: 0;
         padding: 16px 20px;
-        width: 100%;
+        width: 100vw;
         box-sizing: border-box;
         background: #111111;
         color: #ffffff;
-        border-radius: 12px;
+        border-radius: 0;
         text-align: center;
         font-size: 0.85rem;
     }
@@ -376,6 +382,8 @@ def render_footer():
     """Bottom footer"""
     st.markdown("""
     <div class="usp-footer">
-        <strong>US Pizza Malaysia</strong> · Student Voucher Programme 2026
+        <strong>US Pizza Malaysia</strong> · Student Voucher Programme 2026<br>
+        Data source: Route Plan workbook · Updates write back to Excel<br>
+        Need help? Contact Operations / Area Manager team
     </div>
     """, unsafe_allow_html=True)
