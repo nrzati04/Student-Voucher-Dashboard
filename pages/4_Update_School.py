@@ -37,11 +37,12 @@ with selector_panel:
         options[label] = idx
     selected = st.selectbox("School", list(options))
     row = routes.loc[options[selected]]
+    current_assignee = str(row.get("ASSIGNED PIC", "") or "Unassigned")
 
     status_now = str(row.get("STATUS", "") or "")
     status_label = status_now or "Pending"
     st.markdown(f"### {row['NAMA SEKOLAH']}")
-    st.caption(f"{row['LEVEL']} · Route manager: {manager}")
+    st.caption(f"{row['LEVEL']} · Area: {row.get('AREA', '—')} · Route manager: {manager}")
     metric_left, metric_right = st.columns(2)
     metric_left.metric("Current result", status_label)
     metric_right.metric("Planned vouchers", f"{int(row['TOTAL']):,}")
@@ -59,71 +60,36 @@ with record_panel:
         else:
             default_status = "Pending"
 
-        person_met_options = [
-            "Not provided", "Pengetua", "Guru Besar", "Penolong Kanan HEM",
-            "GPK Koko", "GPK HEM", "Kerani", "Guard", "Cikgu", "Other",
-        ]
-        saved_person_met = str(row.get("PERSON MET", "") or "").strip()
-        if saved_person_met in person_met_options:
-            person_met_index = person_met_options.index(saved_person_met)
-        elif saved_person_met:
-            person_met_index = person_met_options.index("Other")
-        else:
-            person_met_index = 0
-        person_met_choice = st.selectbox(
-            "Position of person met (optional)",
-            person_met_options,
-            index=person_met_index,
-            key=f"person_met_choice_{row['_EXCEL_ROW']}",
-        )
-        other_person_met = ""
-        if person_met_choice == "Other":
-            other_person_met = st.text_input(
-                "Specify the position or person met",
-                value=saved_person_met if saved_person_met not in person_met_options else "",
-                placeholder="Enter the role or position",
-                key=f"person_met_other_{row['_EXCEL_ROW']}",
-            )
-        person_met_value = (
-            other_person_met.strip() if person_met_choice == "Other"
-            else "" if person_met_choice == "Not provided"
-            else person_met_choice
-        )
-
-        st.markdown("**Distribution details**")
-        status = st.selectbox(
-            "Outcome",
-            ["Pending", "Received", "Rejected"],
-            index=["Pending", "Received", "Rejected"].index(default_status),
-            help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
-            key=f"outcome_{row['_EXCEL_ROW']}",
-        )
-        quantity_not_recorded = st.checkbox(
-            "Voucher quantity not recorded",
-            value=bool(row.get("QTY NOT RECORDED", False)),
-            help="Use this when the school received vouchers but the quantity is unavailable.",
-            key=f"qty_not_recorded_{row['_EXCEL_ROW']}",
-        )
         with st.form("update_form"):
             outcome_column, recipient_column = st.columns(2, gap="large")
             with outcome_column:
+                st.markdown("**Distribution details**")
+                assignees = sorted(routes["ASSIGNED PIC"].dropna().astype(str).unique().tolist())
+                if current_assignee not in assignees:
+                    assignees.append(current_assignee)
+                assigned_pic = st.selectbox(
+                    "Assigned person in charge",
+                    assignees,
+                    index=assignees.index(current_assignee),
+                    help="This changes the person responsible for this school only. The route manager remains unchanged.",
+                )
+                status = st.selectbox(
+                    "Outcome",
+                    ["Pending", "Received", "Rejected"],
+                    index=["Pending", "Received", "Rejected"].index(default_status),
+                    help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
+                )
                 qty = st.number_input(
                     "Voucher quantity delivered",
                     min_value=0,
                     value=int(row["QTY GIVEN"]),
                     step=1,
-                    disabled=quantity_not_recorded,
                     help="Enter the number of vouchers handed to the school.",
                 )
                 reason = st.text_input(
                     "Reason for rejection (if applicable)",
                     value=str(row.get("REJECTION REASON", "") or ""),
                     placeholder="Only required if the outcome is Rejected",
-                )
-                event = st.text_input(
-                    "Event (optional)",
-                    value=str(row.get("EVENT", "") or ""),
-                    placeholder="e.g. School carnival",
                 )
             with recipient_column:
                 st.markdown("**Receiving contact**")
@@ -138,30 +104,26 @@ with record_panel:
                     placeholder="e.g. 012-345 6789",
                 )
                 email = st.text_input(
-                    "School email address (optional)",
+                    "School email address",
                     value=str(row.get("EMAIL ADDRESS", "") or ""),
-                    placeholder="Leave blank if the school did not provide one",
+                    placeholder="e.g. office@school.edu.my",
                 )
             save = st.form_submit_button("Save record", type="primary", use_container_width=True)
 
         if save:
             errors = []
             if status == "Received":
+                if int(qty) <= 0: errors.append("Enter the number of vouchers delivered.")
                 if not pic.strip(): errors.append("Enter the recipient or PIC name.")
                 if not phone.strip(): errors.append("Enter a contact number.")
-                if email.strip() and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()):
-                    errors.append("Enter a valid email address, or leave the field blank.")
+                if not email.strip(): errors.append("Enter an email address.")
+                elif not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()): errors.append("Enter a valid email address.")
             if status == "Rejected" and not reason.strip(): errors.append("Enter the reason for rejection.")
-            if person_met_choice == "Other" and not other_person_met.strip():
-                errors.append("Enter the position or person met, or choose a listed option.")
             if errors:
                 for error in errors: st.error(error)
             else:
                 try:
-                    save_school_update(
-                        row, status, None if quantity_not_recorded else int(qty), pic.strip(), phone.strip(), email.strip(),
-                        reason.strip(), event.strip(), person_met_value,
-                    )
+                    save_school_update(row, status, int(qty), pic.strip(), phone.strip(), email.strip(), reason.strip(), assigned_pic)
                     st.success(f"Record saved for {row['NAMA SEKOLAH']}.")
                     st.rerun()
                 except PermissionError:
@@ -170,13 +132,8 @@ with record_panel:
                     st.error(f"Unable to save the record: {exc}")
 
     with view_tab:
-        voucher_display = "Not recorded" if row.get("QTY NOT RECORDED", False) else f"{int(row['QTY GIVEN']):,}"
-        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Result:** {status_label}  \n**Vouchers delivered:** {voucher_display}")
+        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Assigned PIC:** {current_assignee}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
         st.markdown(f"**Recipient / PIC:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
-        if row.get("EVENT", ""):
-            st.markdown(f"**Event:** {row['EVENT']}")
-        if row.get("PERSON MET", ""):
-            st.markdown(f"**Position of person met:** {row['PERSON MET']}")
         if row.get("REJECTION REASON", ""):
             st.markdown(f"**Rejection reason:** {row['REJECTION REASON']}")
         if row.get("DATE", ""):
@@ -187,7 +144,7 @@ with record_panel:
         confirm = st.checkbox("Confirm clearing this entry", key=f"confirm_clear_{row['_EXCEL_ROW']}")
         if st.button("Clear distribution entry", disabled=not confirm):
             try:
-                save_school_update(row, "Pending", 0, "", "", "", "")
+                save_school_update(row, "Pending", 0, "", "", "", "", current_assignee)
                 st.success("Distribution entry cleared.")
                 st.rerun()
             except PermissionError:
