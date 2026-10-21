@@ -24,8 +24,8 @@ with region_column:
     st.subheader("School coverage by region")
     region_table(overview)
 
-st.subheader("School progress by area")
-area_progress_table(routes, overview_scope)
+with st.expander("School progress by area", expanded=False):
+    area_progress_table(routes, overview_scope)
 
 with st.expander("Progress by manager", expanded=False):
     person_progress_table(overview)
