@@ -60,10 +60,35 @@ def apply_theme():
     }
     section[data-testid="stSidebar"] [data-testid="stSidebarNavLink"] {
         color: #ffffff !important;
+        border-radius: 8px !important;
+        margin: 3px 0 !important;
+        padding-top: 0.45rem !important;
+        padding-bottom: 0.45rem !important;
+        transition: background-color 120ms ease-in-out;
     }
     section[data-testid="stSidebar"] [data-testid="stSidebarNavLink"][aria-current="page"] {
-        background: rgba(255,255,255,0.15) !important;
-        border-radius: 8px;
+        background: #C8202F !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarNavLink"]:hover {
+        background: rgba(255,255,255,0.14) !important;
+        color: #ffffff !important;
+    }
+    section[data-testid="stSidebar"] .stButton > button {
+        background: #C8202F !important;
+        border: 1px solid #C8202F !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+        min-height: 42px;
+    }
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: #A71926 !important;
+        border-color: #A71926 !important;
+    }
+    section[data-testid="stSidebar"] .stButton > button * {
+        color: #ffffff !important;
     }
 
     /* ===== Metric cards ===== */
@@ -362,6 +387,7 @@ def render_footer():
     st.markdown("""
     <div class="usp-footer">
         <strong>US Pizza Malaysia</strong> · Student Voucher Programme 2026<br>
-        © 2026 US Pizza Malaysia. All rights reserved.
+        Data source: Route Plan workbook · Updates write back to Excel<br>
+        Need help? Contact Operations / Area Manager team
     </div>
     """, unsafe_allow_html=True)
