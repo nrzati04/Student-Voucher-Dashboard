@@ -31,23 +31,6 @@ def apply_theme():
         min-height: 100vh;
     }
 
-    /* Let short pages stretch so the footer can sit at the bottom. */
-    section[data-testid="stMain"] {
-        min-height: 100vh;
-    }
-    .main .block-container {
-        min-height: calc(100vh - 2rem);
-        padding-bottom: 7rem;
-    }
-    .main .block-container > div[data-testid="stVerticalBlock"] {
-        min-height: calc(100vh - 2rem);
-        display: flex;
-        flex-direction: column;
-    }
-    .main .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(.usp-footer) {
-        margin-top: auto;
-    }
-
     /* ===== Main content text – force dark readable text ===== */
     .main .block-container,
     .main .block-container p,
@@ -247,14 +230,11 @@ def apply_theme():
 
     /* ===== Footer ===== */
     .usp-footer {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 1000;
-        margin: 0;
+        position: static;
+        margin: 2.5rem 0 0;
         padding: 16px 20px;
         width: 100vw;
+        margin-left: calc(50% - 50vw);
         box-sizing: border-box;
         background: #111111;
         color: #ffffff;
@@ -276,7 +256,8 @@ def apply_theme():
         position: sticky;
         top: 0;
         z-index: 999;
-        width: 100%;
+        width: 100vw;
+        margin-left: calc(50% - 50vw);
         box-sizing: border-box;
         background: #ffffff;
         padding: 0.8rem 1.2rem;
