@@ -390,7 +390,7 @@ def render_footer():
     st.markdown("""
     <div class="usp-footer">
         <strong>US Pizza Malaysia</strong> · Student Voucher Programme 2026<br>
-        Data source: Route Plan workbook · Updates write back to Excel<br>
+        Data source: Route Plan workbook · Updates write back to Google Sheets<br>
         Need help? Contact Operations / Area Manager team
     </div>
     """, unsafe_allow_html=True)
