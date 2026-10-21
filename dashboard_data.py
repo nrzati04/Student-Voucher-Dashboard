@@ -3,9 +3,6 @@ Data loading + UI helpers for US Pizza Student Voucher Dashboard
 """
 
 from pathlib import Path
-import io
-import json
-import os
 import re
 import pandas as pd
 import streamlit as st
@@ -14,71 +11,26 @@ from openpyxl import load_workbook
 from styles import apply_theme, render_top_navigation, render_footer
 
 # Excel sits next to this file
-WORKBOOK = Path(os.environ.get("WORKBOOK_PATH", str(Path(__file__).parent / "Student_Voucher_Route_Plan_2026_v3.xlsx")))
-
-
-def _drive_file_id() -> str:
-    try:
-        return str(st.secrets.get("DRIVE_FILE_ID", "")).strip()
-    except Exception:
-        return os.environ.get("DRIVE_FILE_ID", "").strip()
-
-
-def _drive_service():
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-
-    try:
-        account_info = dict(st.secrets["gcp_service_account"])
-    except Exception:
-        account_info = None
-    if not account_info:
-        raw = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-        if raw:
-            account_info = json.loads(raw)
-    if not account_info:
-        raise RuntimeError("Google Drive credentials are not configured in Streamlit Secrets.")
-    credentials = service_account.Credentials.from_service_account_info(
-        account_info, scopes=["https://www.googleapis.com/auth/drive"]
-    )
-    return build("drive", "v3", credentials=credentials, cache_discovery=False)
-
-
-def sync_workbook_from_drive() -> None:
-    file_id = _drive_file_id()
-    if not file_id:
-        return
-    from googleapiclient.http import MediaIoBaseDownload
-    request = _drive_service().files().get_media(fileId=file_id)
-    temp_path = WORKBOOK.with_suffix(".download.tmp")
-    WORKBOOK.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with io.FileIO(temp_path, "wb") as fh:
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-        temp_path.replace(WORKBOOK)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
-
-
-def sync_workbook_to_drive() -> None:
-    file_id = _drive_file_id()
-    if not file_id:
-        return
-    from googleapiclient.http import MediaFileUpload
-    media = MediaFileUpload(
-        str(WORKBOOK),
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        resumable=True,
-    )
-    _drive_service().files().update(fileId=file_id, media_body=media).execute()
+WORKBOOK = Path(__file__).parent / "Student_Voucher_Route_Plan_2026_v3.xlsx"
 
 
 def clean(value) -> str:
     return "" if pd.isna(value) else re.sub(r"\s+", " ", str(value)).strip()
+
+
+def outlet_key(value) -> str:
+    return re.sub(r"[^a-z0-9]", "", clean(value).lower())
+
+
+def region_for_state(state) -> str:
+    state = clean(state).lower()
+    if state in {"selangor", "kuala lumpur", "putrajaya"}:
+        return "KV"
+    if state in {"perlis", "kedah", "pulau pinang", "penang", "perak"}:
+        return "Northern"
+    if state in {"negeri sembilan", "melaka", "johor"}:
+        return "Southern"
+    return "Unassigned"
 
 
 @st.cache_data(show_spinner=False)
@@ -89,6 +41,15 @@ def load_routes(path_text: str) -> pd.DataFrame:
 
     frames = []
     book = pd.ExcelFile(path, engine="openpyxl")
+    outlet_states = {}
+    if "Manpower & Outlets" in book.sheet_names:
+        outlet_table = book.parse("Manpower & Outlets", header=2)
+        if {"OUTLET", "STATE"}.issubset(outlet_table.columns):
+            outlet_states = {
+                outlet_key(outlet): clean(state)
+                for outlet, state in zip(outlet_table["OUTLET"], outlet_table["STATE"])
+                if clean(outlet)
+            }
 
     for sheet in book.sheet_names:
         raw = book.parse(sheet_name=sheet, header=None)
@@ -109,6 +70,11 @@ def load_routes(path_text: str) -> pd.DataFrame:
 
         df = df[df["NAMA SEKOLAH"].notna()].copy()
         df["MANAGER"] = sheet.strip()
+        if "NEAREST OUTLET" not in df:
+            df["NEAREST OUTLET"] = ""
+        df["REGION"] = df["NEAREST OUTLET"].map(
+            lambda outlet: region_for_state(outlet_states.get(outlet_key(outlet), ""))
+        )
         df["_SHEET"] = sheet
         df["_HEADER_ROW"] = header_row + 1
         # `raw` keeps its original worksheet row index, so index + 1 is the Excel row.
@@ -117,13 +83,10 @@ def load_routes(path_text: str) -> pd.DataFrame:
 
         for col in ("TOTAL", "QTY GIVEN"):
             if col not in df:
-                df[col] = pd.NA if col == "QTY GIVEN" else 0
-            numeric_values = pd.to_numeric(df[col], errors="coerce")
-            if col == "QTY GIVEN":
-                df["QTY NOT RECORDED"] = numeric_values.isna()
-            df[col] = numeric_values.fillna(0)
+                df[col] = 0
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "EVENT", "PERSON MET"):
+        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON"):
             if col not in df:
                 df[col] = ""
             df[col] = df[col].map(clean)
@@ -148,8 +111,6 @@ def page_setup(title: str) -> pd.DataFrame:
         layout="wide",
         initial_sidebar_state="collapsed",
     )
-    sync_workbook_from_drive()
-    load_routes.clear()
     apply_theme()
     render_top_navigation()
 
@@ -170,17 +131,13 @@ def page_setup(title: str) -> pd.DataFrame:
     return routes
 
 
-def metric_cards(df: pd.DataFrame):
+def metric_cards(df: pd.DataFrame, include_vouchers: bool = True):
     total_schools = len(df)
     primary = int((df["LEVEL"].str.lower() == "primary").sum())
     secondary = int((df["LEVEL"].str.lower() == "secondary").sum())
     given_schools = int(df["GIVEN"].sum())
     rejected = int(df["REJECTED"].sum())
     left = max(total_schools - given_schools, 0)
-    planned = int(df["TOTAL"].sum())
-    issued = int(df["QTY GIVEN"].sum())
-    balance = max(planned - issued, 0)
-
     c1, c2, c3 = st.columns(3)
     c1.metric("Total schools", f"{total_schools:,}")
     c2.metric("Primary schools", f"{primary:,}")
@@ -192,59 +149,117 @@ def metric_cards(df: pd.DataFrame):
     c3.metric("Schools left", f"{left:,}")
     c4.metric("% schools received", f"{(given_schools/total_schools*100) if total_schools else 0:.1f}%")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Planned vouchers*", f"{planned:,}")
-    c2.metric("Vouchers given", f"{issued:,}")
-    c3.metric("Voucher balance*", f"{balance:,}")
-    pct = issued / planned if planned else 0
-    c4.metric("% vouchers given", f"{pct*100:.1f}%")
+    if include_vouchers:
+        planned = int(df["TOTAL"].sum())
+        issued = int(df["QTY GIVEN"].sum())
+        balance = max(planned - issued, 0)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Planned vouchers*", f"{planned:,}")
+        c2.metric("Vouchers given", f"{issued:,}")
+        c3.metric("Voucher balance*", f"{balance:,}")
+        pct = issued / planned if planned else 0
+        c4.metric("% vouchers given", f"{pct*100:.1f}%")
 
 
-def level_table(df: pd.DataFrame):
+def level_table(df: pd.DataFrame, include_vouchers: bool = True):
     rows = []
     for level in ["Primary", "Secondary"]:
         part = df[df["LEVEL"].str.lower() == level.lower()]
         if part.empty:
             continue
-        planned = int(part["TOTAL"].sum())
-        issued = int(part["QTY GIVEN"].sum())
-        rows.append({
+        summary = {
             "Level": level,
             "Schools": len(part),
             "Received schools": int(part["GIVEN"].sum()),
             "Schools left": max(len(part) - int(part["GIVEN"].sum()), 0),
             "Rejected schools": int(part["REJECTED"].sum()),
-            "Planned vouchers*": planned,
-            "Vouchers given": issued,
-            "Voucher balance*": max(planned - issued, 0),
-        })
+        }
+        if include_vouchers:
+            planned = int(part["TOTAL"].sum())
+            issued = int(part["QTY GIVEN"].sum())
+            summary.update({
+                "Planned vouchers*": planned,
+                "Vouchers given": issued,
+                "Voucher balance*": max(planned - issued, 0),
+            })
+        rows.append(summary)
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
-def manager_table(df: pd.DataFrame):
+def manager_table(df: pd.DataFrame, include_vouchers: bool = True):
     rows = []
     for manager, part in df.groupby("MANAGER", dropna=False):
-        planned = int(part["TOTAL"].sum())
-        issued = int(part["QTY GIVEN"].sum())
-        rows.append({
+        summary = {
             "Manager / PIC": manager,
+            "Region": ", ".join(sorted(part["REGION"].dropna().unique())),
             "Primary schools": int((part["LEVEL"].str.lower() == "primary").sum()),
             "Secondary schools": int((part["LEVEL"].str.lower() == "secondary").sum()),
             "Received schools": int(part["GIVEN"].sum()),
             "Schools left": max(len(part) - int(part["GIVEN"].sum()), 0),
             "Rejected schools": int(part["REJECTED"].sum()),
-            "Planned vouchers*": planned,
-            "Vouchers given": issued,
-            "Voucher balance*": max(planned - issued, 0),
-        })
+        }
+        if include_vouchers:
+            planned = int(part["TOTAL"].sum())
+            issued = int(part["QTY GIVEN"].sum())
+            summary.update({
+                "Planned vouchers*": planned,
+                "Vouchers given": issued,
+                "Voucher balance*": max(planned - issued, 0),
+            })
+        rows.append(summary)
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
+    status_col, region_col, manager_col = st.columns([1, 1, 1.5])
+    status = status_col.selectbox(
+        "Distribution status", ["All", "Received", "Pending", "Rejected"], key="overview_status"
+    )
+    regions = ["All", "KV", "Northern", "Southern"]
+    region = region_col.selectbox("Region", regions, key="overview_region")
+    manager_source = df if region == "All" else df[df["REGION"] == region]
+    managers = ["All"] + sorted(manager_source["MANAGER"].dropna().unique().tolist())
+    manager = manager_col.selectbox("Manager / PIC", managers, key="overview_manager")
+
+    result = df.copy()
+    if status == "Received":
+        result = result[result["GIVEN"] & ~result["REJECTED"]]
+    elif status == "Rejected":
+        result = result[result["REJECTED"]]
+    elif status == "Pending":
+        result = result[~result["GIVEN"] & ~result["REJECTED"]]
+    if region != "All":
+        result = result[result["REGION"] == region]
+    if manager != "All":
+        result = result[result["MANAGER"] == manager]
+    st.caption(f"Showing {len(result):,} schools · {status} · {region} · {manager}")
+    return result
+
+
+def region_table(df: pd.DataFrame):
+    rows = []
+    for region in ["KV", "Northern", "Southern", "Unassigned"]:
+        part = df[df["REGION"] == region]
+        if part.empty:
+            continue
+        rows.append({
+            "Region": region,
+            "Total schools": len(part),
+            "Primary": int((part["LEVEL"].str.lower() == "primary").sum()),
+            "Secondary": int((part["LEVEL"].str.lower() == "secondary").sum()),
+            "Received": int((part["GIVEN"] & ~part["REJECTED"]).sum()),
+            "Pending": int((~part["GIVEN"] & ~part["REJECTED"]).sum()),
+            "Rejected": int(part["REJECTED"].sum()),
+        })
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def progress_pie(df: pd.DataFrame, title: str, mode: str):
     """Create a labeled donut chart for school results or voucher balance."""
     if mode == "schools":
-        received = int(df["SUCCESS"].sum())
+        received = int((df["GIVEN"] & ~df["REJECTED"]).sum())
         rejected = int(df["REJECTED"].sum())
         pending = max(len(df) - received - rejected, 0)
         labels = ["Received schools", "Rejected schools", "Pending schools"]
@@ -270,18 +285,27 @@ def progress_pie(df: pd.DataFrame, title: str, mode: str):
     return fig
 
 
-def filtered_school_list(df: pd.DataFrame, key: str):
-    left, right = st.columns(2)
-    status = left.selectbox(
-        "Filter by result",
-        ["All results", "Received", "Rejected", "Pending"],
-        key=f"status_{key}",
-    )
-    search = right.text_input("Search school", key=f"search_{key}").strip().lower()
+def filtered_school_list(
+    df: pd.DataFrame,
+    key: str,
+    show_status_filter: bool = True,
+    include_distribution: bool = True,
+):
+    if show_status_filter:
+        left, right = st.columns(2)
+        status = left.selectbox(
+            "Filter by result",
+            ["All results", "Received", "Rejected", "Pending"],
+            key=f"status_{key}",
+        )
+        search = right.text_input("Search school", key=f"search_{key}").strip().lower()
+    else:
+        status = "All results"
+        search = st.text_input("Search school", key=f"search_{key}").strip().lower()
 
     result = df.copy()
     if status == "Received":
-        result = result[result["SUCCESS"]]
+        result = result[result["GIVEN"] & ~result["REJECTED"]]
     elif status == "Rejected":
         result = result[result["REJECTED"]]
     elif status == "Pending":
@@ -290,27 +314,20 @@ def filtered_school_list(df: pd.DataFrame, key: str):
     if search:
         result = result[result["NAMA SEKOLAH"].astype(str).str.lower().str.contains(search, na=False)]
 
-    cols = [
-        c for c in [
-            "MANAGER", "LEVEL", "NAMA SEKOLAH", "QTY GIVEN", "STAFF NAME",
-            "CONTACT NUMBER", "EMAIL ADDRESS", "STATUS", "REJECTION REASON", "EVENT", "PERSON MET"
-        ] if c in result.columns
-    ]
-    display = result[cols].copy()
-    if "QTY GIVEN" in display and "QTY NOT RECORDED" in result:
-        display["QTY GIVEN"] = [
-            "Not recorded" if missing else value
-            for missing, value in zip(result["QTY NOT RECORDED"], result["QTY GIVEN"])
+    cols = ["REGION", "MANAGER", "LEVEL", "NAMA SEKOLAH", "NEAREST OUTLET", "STATUS"]
+    if include_distribution:
+        cols += [
+            "QTY GIVEN", "STAFF NAME", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON"
         ]
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    cols = [column for column in cols if column in result.columns]
+    st.dataframe(result[cols], use_container_width=True, hide_index=True)
 
 
-def save_school_update(row: pd.Series, status: str, qty: int | None, pic: str, phone: str, email: str, reason: str, event: str = "", person_met: str = ""):
+def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    sync_workbook_from_drive()
     path = WORKBOOK
     wb = load_workbook(path)
     ws = wb[row["_SHEET"]]
@@ -328,8 +345,6 @@ def save_school_update(row: pd.Series, status: str, qty: int | None, pic: str, p
         "EMAIL ADDRESS": email,
         "STATUS": status,
         "REJECTION REASON": reason,
-        "EVENT": event,
-        "PERSON MET": person_met,
         "DATE": date_value,
     }
     for name, value in values.items():
@@ -345,7 +360,6 @@ def save_school_update(row: pd.Series, status: str, qty: int | None, pic: str, p
     try:
         wb.save(temp_path)
         temp_path.replace(path)
-        sync_workbook_to_drive()
     finally:
         if temp_path.exists():
             temp_path.unlink()
