@@ -14,6 +14,7 @@ with manager_col:
 part = routes[routes["MANAGER"] == selected]
 with region_col:
     part = route_filters(part, "manager_page", include_manager=False)
+    
 st.markdown(f"### {selected}")
 metric_cards(part, include_vouchers=False)
 
