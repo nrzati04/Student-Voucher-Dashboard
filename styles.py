@@ -248,6 +248,8 @@ def apply_theme():
     .usp-footer {
         margin-top: 2.5rem;
         padding: 16px 20px;
+        width: 100%;
+        box-sizing: border-box;
         background: #111111;
         color: #ffffff;
         border-radius: 12px;
@@ -268,6 +270,8 @@ def apply_theme():
         position: sticky;
         top: 0;
         z-index: 999;
+        width: 100%;
+        box-sizing: border-box;
         background: #ffffff;
         padding: 0.8rem 1.2rem;
         border-bottom: 3px solid #C8202F;
