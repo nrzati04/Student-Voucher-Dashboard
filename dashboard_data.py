@@ -59,7 +59,7 @@ def region_for_state(state) -> str:
 
 @st.cache_data(show_spinner=False)
 def load_outlet_roster(path_text: str) -> pd.DataFrame:
-    """Load outlet ownership/category details from the workbook's roster tab."""
+    """Load outlet-to-state values used only to infer each school's region."""
     if google_sheets_enabled():
         values = _spreadsheet().worksheet("Manpower & Outlets").get_all_values()
         raw = _values_frame(values)
@@ -70,27 +70,14 @@ def load_outlet_roster(path_text: str) -> pd.DataFrame:
     else:
         path = Path(path_text)
         roster = pd.read_excel(path, sheet_name="Manpower & Outlets", header=2)
-    required = {"OUTLET", "CATEGORY", "PERSON", "STATE"}
+    required = {"OUTLET", "STATE"}
     if not required.issubset(roster.columns):
-        raise ValueError("The Manpower & Outlets tab must contain OUTLET, CATEGORY, PERSON and STATE.")
-    roster = roster[list(required) + (["AREA"] if "AREA" in roster.columns else [])].copy()
+        raise ValueError("The Manpower & Outlets tab must contain OUTLET and STATE.")
+    roster = roster[list(required)].copy()
     roster["OUTLET"] = roster["OUTLET"].map(clean)
-    roster["CATEGORY"] = roster["CATEGORY"].map(clean).str.title()
-    roster["CATEGORY"] = roster["CATEGORY"].replace({"Jv": "JV"})
-    roster["PERSON"] = roster["PERSON"].map(clean)
     roster["STATE"] = roster["STATE"].map(clean)
-    if "AREA" not in roster:
-        roster["AREA"] = roster["OUTLET"]
-    roster["AREA"] = roster["AREA"].map(clean)
-    roster.loc[roster["AREA"] == "", "AREA"] = roster.loc[roster["AREA"] == "", "OUTLET"]
     roster = roster[roster["OUTLET"] != ""].copy()
-
-    # Use the supervisor's owner assignment for these outlets.
-    intern_outlets = {outlet_key("Dang Wangi"), outlet_key("Ampang")}
-    roster.loc[roster["OUTLET"].map(outlet_key).isin(intern_outlets), "PERSON"] = "Interns"
-    roster.loc[roster["CATEGORY"].str.lower() == "franchise", "PERSON"] = "(franchise - not routed)"
     roster["OUTLET_KEY"] = roster["OUTLET"].map(outlet_key)
-    roster["AREA_KEY"] = roster["AREA"].map(outlet_key)
     roster["REGION"] = roster["STATE"].map(region_for_state)
     return roster
 
@@ -130,28 +117,16 @@ def load_routes(path_text: str) -> pd.DataFrame:
         df["MANAGER"] = sheet.strip()
         if "NEAREST OUTLET" not in df:
             df["NEAREST OUTLET"] = ""
+        if "AREA" not in df:
+            df["AREA"] = ""
+        df["AREA"] = df["AREA"].map(clean)
+        df.loc[df["AREA"] == "", "AREA"] = df.loc[df["AREA"] == "", "NEAREST OUTLET"].map(clean)
+        df["AREA_KEY"] = df["AREA"].map(outlet_key)
         df["OUTLET_KEY"] = df["NEAREST OUTLET"].map(outlet_key)
-        df["OUTLET_CATEGORY"] = df["OUTLET_KEY"].map(
-            lambda key: outlet_lookup.get(key, {}).get("CATEGORY", "Unassigned")
-        )
-        df["OUTLET_PIC"] = df["OUTLET_KEY"].map(
-            lambda key: outlet_lookup.get(key, {}).get("PERSON", "Unassigned")
-        )
         df["OUTLET_STATE"] = df["OUTLET_KEY"].map(
             lambda key: outlet_lookup.get(key, {}).get("STATE", "")
         )
-        df["AREA"] = df["OUTLET_KEY"].map(
-            lambda key: outlet_lookup.get(key, {}).get("AREA", "")
-        )
-        df["AREA"] = df["AREA"].where(df["AREA"].map(clean) != "", df["NEAREST OUTLET"].map(clean))
-        df["AREA_KEY"] = df["AREA"].map(outlet_key)
         df["REGION"] = df["OUTLET_STATE"].map(region_for_state)
-        if "ASSIGNED PIC" not in df:
-            df["ASSIGNED PIC"] = ""
-        df["ASSIGNED PIC"] = df["ASSIGNED PIC"].map(clean)
-        df.loc[df["ASSIGNED PIC"] == "", "ASSIGNED PIC"] = df.loc[
-            df["ASSIGNED PIC"] == "", "OUTLET_PIC"
-        ]
         df["_SHEET"] = sheet
         df["_HEADER_ROW"] = header_row + 1
         # `raw` keeps its original worksheet row index, so index + 1 is the Excel row.
@@ -321,20 +296,18 @@ def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
     status = status_col.selectbox("School result", ["All", "Received", "Pending", "Rejected"], key="overview_status")
     regions = ["All", "KV", "Northern", "Southern"]
     region = region_col.selectbox("Region", regions, key="overview_region")
-    roster = load_outlet_roster(str(WORKBOOK))
-    region_source = roster if region == "All" else roster[roster["REGION"] == region]
-    in_scope_outlets = df["OUTLET_KEY"].isin(region_source["OUTLET_KEY"])
-    people = ["All"] + sorted(df.loc[in_scope_outlets, "ASSIGNED PIC"].dropna().unique().tolist())
-    pic = pic_col.selectbox("Person in charge", people, key="overview_pic")
+    manager_source = df if region == "All" else df[df["REGION"] == region]
+    managers = ["All"] + sorted(manager_source["MANAGER"].dropna().unique().tolist())
+    manager = pic_col.selectbox("Manager", managers, key="overview_manager")
 
     result = df.copy()
     if region != "All":
         result = result[result["REGION"] == region]
-    if pic != "All":
-        result = result[result["ASSIGNED PIC"] == pic]
-    st.caption(f"Showing {len(result):,} routed schools · {region} · {pic}")
+    if manager != "All":
+        result = result[result["MANAGER"] == manager]
+    st.caption(f"Showing {len(result):,} routed schools · {region} · {manager}")
     st.caption(f"School result filter applies to the school list: {status}.")
-    return result, (region, pic), status
+    return result, (region, manager), status
 
 
 def region_table(df: pd.DataFrame):
@@ -358,14 +331,14 @@ def region_table(df: pd.DataFrame):
 
 
 def person_progress_table(routes: pd.DataFrame):
-    """Summarize workload by the PIC currently assigned to each school."""
+    """Summarize workload using the manager name on each route sheet."""
     rows = []
-    for person, part in routes.groupby("ASSIGNED PIC", dropna=False):
+    for person, part in routes.groupby("MANAGER", dropna=False):
         received = int(part["SUCCESS"].sum())
         rejected = int(part["REJECTED"].sum())
         visited = received + rejected
         rows.append({
-            "Person in charge": clean(person) or "Unassigned",
+            "Manager": clean(person) or "Unassigned",
             "Areas": ", ".join(sorted(part["AREA"].dropna().map(clean).unique())),
             "Total schools": len(part),
             "Primary": int((part["LEVEL"].str.lower() == "primary").sum()),
@@ -376,36 +349,19 @@ def person_progress_table(routes: pd.DataFrame):
             "Schools left": max(len(part) - visited, 0),
         })
     if rows:
-        st.dataframe(pd.DataFrame(rows).sort_values("Person in charge"), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows).sort_values("Manager"), use_container_width=True, hide_index=True)
 
 
 def area_progress_table(routes: pd.DataFrame, filters):
-    region, pic = filters
-    roster = load_outlet_roster(str(WORKBOOK))
+    region, manager = filters
+    scoped_routes = routes.copy()
     if region != "All":
-        roster = roster[roster["REGION"] == region]
+        scoped_routes = scoped_routes[scoped_routes["REGION"] == region]
+    if manager != "All":
+        scoped_routes = scoped_routes[scoped_routes["MANAGER"] == manager]
     rows = []
-    area_groups = roster.groupby(["AREA_KEY", "AREA", "REGION"], dropna=False)
-    for (area_key, area_name, area_region), area_roster in area_groups:
-        part = routes[routes["AREA_KEY"] == area_key]
-        if pic != "All":
-            part = part[part["ASSIGNED PIC"] == pic]
-            if part.empty:
-                continue
-        area_people = sorted(area_roster["PERSON"].dropna().unique())
-        if part.empty and (area_roster["CATEGORY"].str.lower() == "franchise").all():
-            rows.append({
-                "Area": area_name,
-                "Region": area_region,
-                "Person in charge": ", ".join(area_people),
-                "Route schools": "Not routed",
-                "Received": "—",
-                "Rejected": "—",
-                "Visited (received + rejected)": "Not routed",
-                "Schools left": "Not routed",
-            })
-            continue
-
+    area_groups = scoped_routes.groupby(["AREA", "REGION"], dropna=False)
+    for (area_name, area_region), part in area_groups:
         total = len(part)
         received = int(part["SUCCESS"].sum())
         rejected = int(part["REJECTED"].sum())
@@ -413,7 +369,7 @@ def area_progress_table(routes: pd.DataFrame, filters):
         rows.append({
             "Area": area_name,
             "Region": area_region,
-            "Person in charge": ", ".join(sorted(part["ASSIGNED PIC"].dropna().unique())) or ", ".join(area_people),
+            "Manager": ", ".join(sorted(part["MANAGER"].dropna().unique())),
             "Route schools": total,
             "Received": received,
             "Rejected": rejected,
@@ -421,8 +377,8 @@ def area_progress_table(routes: pd.DataFrame, filters):
             "Schools left": max(total - visited, 0),
         })
 
-    st.caption("Visited counts schools marked Received or Rejected. Franchise areas are listed as not routed.")
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.caption("Visited counts schools marked Received or Rejected. Area names come from the route sheets.")
+    st.dataframe(pd.DataFrame(rows).sort_values(["Region", "Area"]), use_container_width=True, hide_index=True)
 
 
 def progress_pie(df: pd.DataFrame, title: str, mode: str):
@@ -489,7 +445,7 @@ def filtered_school_list(
         result = result[result["NAMA SEKOLAH"].astype(str).str.lower().str.contains(search, na=False)]
 
     cols = [
-        "REGION", "ASSIGNED PIC", "MANAGER",
+        "REGION", "MANAGER",
         "LEVEL", "NAMA SEKOLAH", "AREA", "STATUS",
     ]
     if include_distribution:
@@ -503,7 +459,7 @@ def filtered_school_list(
 
 def save_school_update(
     row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str,
-    reason: str, assigned_pic: str = "", person_met: str = "", event_remarks: str = "",
+    reason: str, person_met: str = "", event_remarks: str = "",
 ):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
@@ -518,7 +474,6 @@ def save_school_update(
         "STATUS": status,
         "REJECTION REASON": reason,
         "DATE": date_value,
-        "ASSIGNED PIC": assigned_pic,
         "PERSON MET": person_met,
         "EVENT REMARKS": event_remarks,
     }
