@@ -28,6 +28,23 @@ def apply_theme():
     .stApp {
         background: var(--cream) !important;
         color: var(--text-dark) !important;
+        min-height: 100vh;
+    }
+
+    /* Let short pages stretch so the footer can sit at the bottom. */
+    section[data-testid="stMain"] {
+        min-height: 100vh;
+    }
+    .main .block-container {
+        min-height: calc(100vh - 2rem);
+    }
+    .main .block-container > div[data-testid="stVerticalBlock"] {
+        min-height: calc(100vh - 2rem);
+        display: flex;
+        flex-direction: column;
+    }
+    .main .block-container > div[data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(.usp-footer) {
+        margin-top: auto;
     }
 
     /* ===== Main content text – force dark readable text ===== */
@@ -256,6 +273,7 @@ def apply_theme():
         border-bottom: 3px solid #C8202F;
         box-shadow: 0 2px 8px rgba(0,0,0,0.10);
         overflow: visible;
+        margin-top: 0;
     }
     .usp-nav-brand {
         display: flex;
@@ -271,12 +289,12 @@ def apply_theme():
         height: 68px;
         object-fit: contain;
         flex: 0 0 96px;
-        border: 1px solid #eeeeee;
-        border-radius: 9px;
-        padding: 5px;
-        background: #ffffff;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
         box-sizing: border-box;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+        box-shadow: none;
     }
     .usp-nav-brand strong {
         display: block;
