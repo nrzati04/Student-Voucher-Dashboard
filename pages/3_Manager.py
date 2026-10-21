@@ -13,10 +13,11 @@ with manager_col:
 
 part = routes[routes["MANAGER"] == selected]
 with region_col:
-    part = route_filters(part, "manager_page", include_manager=False)
-    
+    part = route_filters(part, "manager_page", include_manager=False, show_count=False)
 st.markdown(f"### {selected}")
-metric_cards(part, include_vouchers=False)
+st.caption(f"Showing {len(part):,} schools")
+with st.expander("Manager summary", expanded=False):
+    metric_cards(part, include_vouchers=False)
 
 with st.expander("Progress by school level", expanded=False):
     level_table(part, include_vouchers=False)
