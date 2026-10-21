@@ -11,7 +11,7 @@ secondary = route_filters(secondary, "secondary")
 st.markdown("Secondary school routes only.")
 metric_cards(secondary, include_vouchers=False)
 
-st.subheader("Secondary school list")
-filtered_school_list(secondary, "secondary")
+with st.expander("Secondary school list", expanded=False):
+    filtered_school_list(secondary, "secondary")
 
 render_footer()
