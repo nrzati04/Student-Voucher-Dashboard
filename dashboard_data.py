@@ -14,6 +14,30 @@ from styles import apply_theme, render_top_navigation, render_footer
 WORKBOOK = Path(__file__).parent / "Student_Voucher_Route_Plan_2026_v3.xlsx"
 
 
+def google_sheets_enabled() -> bool:
+    """Use Google Sheets when its ID and service-account credentials are configured."""
+    try:
+        return bool(st.secrets.get("GOOGLE_SHEET_ID") and st.secrets.get("gcp_service_account"))
+    except Exception:
+        return False
+
+
+@st.cache_resource(show_spinner=False)
+def _sheets_client():
+    import gspread
+    return gspread.service_account_from_dict(dict(st.secrets["gcp_service_account"]))
+
+
+def _spreadsheet():
+    return _sheets_client().open_by_key(str(st.secrets["GOOGLE_SHEET_ID"]))
+
+
+def _values_frame(values) -> pd.DataFrame:
+    """Make a rectangular frame from Google Sheets values (which omit trailing cells)."""
+    width = max((len(row) for row in values), default=0)
+    return pd.DataFrame([list(row) + [None] * (width - len(row)) for row in values])
+
+
 def clean(value) -> str:
     return "" if pd.isna(value) else re.sub(r"\s+", " ", str(value)).strip()
 
@@ -34,25 +58,54 @@ def region_for_state(state) -> str:
 
 
 @st.cache_data(show_spinner=False)
+def load_outlet_roster(path_text: str) -> pd.DataFrame:
+    """Load outlet ownership/category details from the workbook's roster tab."""
+    if google_sheets_enabled():
+        values = _spreadsheet().worksheet("Manpower & Outlets").get_all_values()
+        raw = _values_frame(values)
+        if len(raw) < 3:
+            raise ValueError("The Manpower & Outlets sheet needs its column headers on row 3.")
+        raw.columns = [clean(value).upper() or f"COLUMN_{i + 1}" for i, value in enumerate(raw.iloc[2].tolist())]
+        roster = raw.iloc[3:].copy()
+    else:
+        path = Path(path_text)
+        roster = pd.read_excel(path, sheet_name="Manpower & Outlets", header=2)
+    required = {"OUTLET", "CATEGORY", "PERSON", "STATE"}
+    if not required.issubset(roster.columns):
+        raise ValueError("The Manpower & Outlets tab must contain OUTLET, CATEGORY, PERSON and STATE.")
+    roster = roster[list(required)].copy()
+    roster["OUTLET"] = roster["OUTLET"].map(clean)
+    roster["CATEGORY"] = roster["CATEGORY"].map(clean).str.title()
+    roster["CATEGORY"] = roster["CATEGORY"].replace({"Jv": "JV"})
+    roster["PERSON"] = roster["PERSON"].map(clean)
+    roster["STATE"] = roster["STATE"].map(clean)
+    roster = roster[roster["OUTLET"] != ""].copy()
+
+    # Use the supervisor's owner assignment for these outlets.
+    intern_outlets = {outlet_key("Dang Wangi"), outlet_key("Ampang")}
+    roster.loc[roster["OUTLET"].map(outlet_key).isin(intern_outlets), "PERSON"] = "Interns"
+    roster.loc[roster["CATEGORY"].str.lower() == "franchise", "PERSON"] = "(franchise - not routed)"
+    roster["OUTLET_KEY"] = roster["OUTLET"].map(outlet_key)
+    roster["REGION"] = roster["STATE"].map(region_for_state)
+    return roster
+
+
+@st.cache_data(show_spinner=False)
 def load_routes(path_text: str) -> pd.DataFrame:
     path = Path(path_text)
-    if not path.exists():
+    if not google_sheets_enabled() and not path.exists():
         raise FileNotFoundError(f"Workbook not found: {path}")
 
     frames = []
-    book = pd.ExcelFile(path, engine="openpyxl")
-    outlet_states = {}
-    if "Manpower & Outlets" in book.sheet_names:
-        outlet_table = book.parse("Manpower & Outlets", header=2)
-        if {"OUTLET", "STATE"}.issubset(outlet_table.columns):
-            outlet_states = {
-                outlet_key(outlet): clean(state)
-                for outlet, state in zip(outlet_table["OUTLET"], outlet_table["STATE"])
-                if clean(outlet)
-            }
+    if google_sheets_enabled():
+        source_sheets = [(ws.title, _values_frame(ws.get_all_values())) for ws in _spreadsheet().worksheets()]
+    else:
+        book = pd.ExcelFile(path, engine="openpyxl")
+        source_sheets = [(name, book.parse(sheet_name=name, header=None)) for name in book.sheet_names]
+    outlet_roster = load_outlet_roster(str(path))
+    outlet_lookup = outlet_roster.set_index("OUTLET_KEY").to_dict("index")
 
-    for sheet in book.sheet_names:
-        raw = book.parse(sheet_name=sheet, header=None)
+    for sheet, raw in source_sheets:
         header_row = None
         for i in range(min(12, len(raw))):
             labels = {clean(x).upper() for x in raw.iloc[i].tolist()}
@@ -72,9 +125,23 @@ def load_routes(path_text: str) -> pd.DataFrame:
         df["MANAGER"] = sheet.strip()
         if "NEAREST OUTLET" not in df:
             df["NEAREST OUTLET"] = ""
-        df["REGION"] = df["NEAREST OUTLET"].map(
-            lambda outlet: region_for_state(outlet_states.get(outlet_key(outlet), ""))
+        df["OUTLET_KEY"] = df["NEAREST OUTLET"].map(outlet_key)
+        df["OUTLET_CATEGORY"] = df["OUTLET_KEY"].map(
+            lambda key: outlet_lookup.get(key, {}).get("CATEGORY", "Unassigned")
         )
+        df["OUTLET_PIC"] = df["OUTLET_KEY"].map(
+            lambda key: outlet_lookup.get(key, {}).get("PERSON", "Unassigned")
+        )
+        df["OUTLET_STATE"] = df["OUTLET_KEY"].map(
+            lambda key: outlet_lookup.get(key, {}).get("STATE", "")
+        )
+        df["REGION"] = df["OUTLET_STATE"].map(region_for_state)
+        if "ASSIGNED PIC" not in df:
+            df["ASSIGNED PIC"] = ""
+        df["ASSIGNED PIC"] = df["ASSIGNED PIC"].map(clean)
+        df.loc[df["ASSIGNED PIC"] == "", "ASSIGNED PIC"] = df.loc[
+            df["ASSIGNED PIC"] == "", "OUTLET_PIC"
+        ]
         df["_SHEET"] = sheet
         df["_HEADER_ROW"] = header_row + 1
         # `raw` keeps its original worksheet row index, so index + 1 is the Excel row.
@@ -117,9 +184,10 @@ def page_setup(title: str) -> pd.DataFrame:
     with st.sidebar:
         if st.button("🔄 Refresh data", use_container_width=True):
             load_routes.clear()
+            load_outlet_roster.clear()
             st.rerun()
         st.markdown("---")
-        st.caption("Excel updates save back to the workbook.")
+        st.caption("Updates save to Google Sheets." if google_sheets_enabled() else "Local updates save to the Excel workbook.")
 
     try:
         routes = load_routes(str(WORKBOOK))
@@ -144,10 +212,19 @@ def metric_cards(df: pd.DataFrame, include_vouchers: bool = True):
     c3.metric("Secondary schools", f"{secondary:,}")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Received schools", f"{given_schools:,}")
-    c2.metric("Rejected schools", f"{rejected:,}")
-    c3.metric("Schools left", f"{left:,}")
-    c4.metric("% schools received", f"{(given_schools/total_schools*100) if total_schools else 0:.1f}%")
+    if include_vouchers:
+        c1.metric("Received schools", f"{given_schools:,}")
+        c2.metric("Rejected schools", f"{rejected:,}")
+        c3.metric("Schools left", f"{left:,}")
+        c4.metric("% schools received", f"{(given_schools/total_schools*100) if total_schools else 0:.1f}%")
+    else:
+        received = int(df["SUCCESS"].sum())
+        visited = received + rejected
+        schools_left = max(total_schools - visited, 0)
+        c1.metric("Received schools", f"{received:,}")
+        c2.metric("Rejected schools", f"{rejected:,}")
+        c3.metric("Visited (received + rejected)", f"{visited:,}")
+        c4.metric("Schools left to visit", f"{schools_left:,}")
 
     if include_vouchers:
         planned = int(df["TOTAL"].sum())
@@ -167,13 +244,26 @@ def level_table(df: pd.DataFrame, include_vouchers: bool = True):
         part = df[df["LEVEL"].str.lower() == level.lower()]
         if part.empty:
             continue
-        summary = {
-            "Level": level,
-            "Schools": len(part),
-            "Received schools": int(part["GIVEN"].sum()),
-            "Schools left": max(len(part) - int(part["GIVEN"].sum()), 0),
-            "Rejected schools": int(part["REJECTED"].sum()),
-        }
+        received = int(part["SUCCESS"].sum())
+        rejected = int(part["REJECTED"].sum())
+        visited = received + rejected
+        if include_vouchers:
+            summary = {
+                "Level": level,
+                "Schools": len(part),
+                "Received schools": int(part["GIVEN"].sum()),
+                "Schools left": max(len(part) - int(part["GIVEN"].sum()), 0),
+                "Rejected schools": rejected,
+            }
+        else:
+            summary = {
+                "Level": level,
+                "Schools": len(part),
+                "Received": received,
+                "Rejected": rejected,
+                "Visited (received + rejected)": visited,
+                "Schools left": max(len(part) - visited, 0),
+            }
         if include_vouchers:
             planned = int(part["TOTAL"].sum())
             issued = int(part["QTY GIVEN"].sum())
@@ -190,15 +280,20 @@ def level_table(df: pd.DataFrame, include_vouchers: bool = True):
 def manager_table(df: pd.DataFrame, include_vouchers: bool = True):
     rows = []
     for manager, part in df.groupby("MANAGER", dropna=False):
+        received = int(part["SUCCESS"].sum())
+        rejected = int(part["REJECTED"].sum())
+        visited = received + rejected
         summary = {
-            "Manager / PIC": manager,
+            "Route manager": manager,
             "Region": ", ".join(sorted(part["REGION"].dropna().unique())),
             "Primary schools": int((part["LEVEL"].str.lower() == "primary").sum()),
             "Secondary schools": int((part["LEVEL"].str.lower() == "secondary").sum()),
-            "Received schools": int(part["GIVEN"].sum()),
-            "Schools left": max(len(part) - int(part["GIVEN"].sum()), 0),
-            "Rejected schools": int(part["REJECTED"].sum()),
+            "Received schools": int(part["GIVEN"].sum()) if include_vouchers else received,
+            "Schools left": max(len(part) - (int(part["GIVEN"].sum()) if include_vouchers else visited), 0),
+            "Rejected schools": rejected,
         }
+        if not include_vouchers:
+            summary["Visited (received + rejected)"] = visited
         if include_vouchers:
             planned = int(part["TOTAL"].sum())
             issued = int(part["QTY GIVEN"].sum())
@@ -212,29 +307,29 @@ def manager_table(df: pd.DataFrame, include_vouchers: bool = True):
 
 
 def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
-    status_col, region_col, manager_col = st.columns([1, 1, 1.5])
-    status = status_col.selectbox(
-        "Distribution status", ["All", "Received", "Pending", "Rejected"], key="overview_status"
-    )
+    status_col, region_col, category_col, pic_col = st.columns([1, 1, 1, 1.5])
+    status = status_col.selectbox("School result", ["All", "Received", "Pending", "Rejected"], key="overview_status")
     regions = ["All", "KV", "Northern", "Southern"]
     region = region_col.selectbox("Region", regions, key="overview_region")
-    manager_source = df if region == "All" else df[df["REGION"] == region]
-    managers = ["All"] + sorted(manager_source["MANAGER"].dropna().unique().tolist())
-    manager = manager_col.selectbox("Manager / PIC", managers, key="overview_manager")
+    roster = load_outlet_roster(str(WORKBOOK))
+    region_source = roster if region == "All" else roster[roster["REGION"] == region]
+    categories = ["All"] + sorted(region_source["CATEGORY"].dropna().unique().tolist())
+    category = category_col.selectbox("Outlet category", categories, key="overview_category")
+    category_source = region_source if category == "All" else region_source[region_source["CATEGORY"] == category]
+    in_scope_outlets = df["OUTLET_KEY"].isin(category_source["OUTLET_KEY"])
+    people = ["All"] + sorted(df.loc[in_scope_outlets, "ASSIGNED PIC"].dropna().unique().tolist())
+    pic = pic_col.selectbox("Person in charge", people, key="overview_pic")
 
     result = df.copy()
-    if status == "Received":
-        result = result[result["GIVEN"] & ~result["REJECTED"]]
-    elif status == "Rejected":
-        result = result[result["REJECTED"]]
-    elif status == "Pending":
-        result = result[~result["GIVEN"] & ~result["REJECTED"]]
     if region != "All":
         result = result[result["REGION"] == region]
-    if manager != "All":
-        result = result[result["MANAGER"] == manager]
-    st.caption(f"Showing {len(result):,} schools · {status} · {region} · {manager}")
-    return result
+    if category != "All":
+        result = result[result["OUTLET_CATEGORY"] == category]
+    if pic != "All":
+        result = result[result["ASSIGNED PIC"] == pic]
+    st.caption(f"Showing {len(result):,} routed schools · {region} · {category} · {pic}")
+    st.caption(f"School result filter applies to the school list: {status}.")
+    return result, (region, category, pic), status
 
 
 def region_table(df: pd.DataFrame):
@@ -248,18 +343,87 @@ def region_table(df: pd.DataFrame):
             "Total schools": len(part),
             "Primary": int((part["LEVEL"].str.lower() == "primary").sum()),
             "Secondary": int((part["LEVEL"].str.lower() == "secondary").sum()),
-            "Received": int((part["GIVEN"] & ~part["REJECTED"]).sum()),
-            "Pending": int((~part["GIVEN"] & ~part["REJECTED"]).sum()),
+            "Received": int(part["SUCCESS"].sum()),
             "Rejected": int(part["REJECTED"].sum()),
+            "Visited": int(part["SUCCESS"].sum() + part["REJECTED"].sum()),
+            "Schools left": max(len(part) - int(part["SUCCESS"].sum() + part["REJECTED"].sum()), 0),
         })
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
+def person_progress_table(routes: pd.DataFrame):
+    """Summarize workload by the PIC currently assigned to each school."""
+    rows = []
+    for person, part in routes.groupby("ASSIGNED PIC", dropna=False):
+        received = int(part["SUCCESS"].sum())
+        rejected = int(part["REJECTED"].sum())
+        visited = received + rejected
+        rows.append({
+            "Person in charge": clean(person) or "Unassigned",
+            "Outlets": ", ".join(sorted(part["NEAREST OUTLET"].dropna().map(clean).unique())),
+            "Total schools": len(part),
+            "Primary": int((part["LEVEL"].str.lower() == "primary").sum()),
+            "Secondary": int((part["LEVEL"].str.lower() == "secondary").sum()),
+            "Received": received,
+            "Rejected": rejected,
+            "Visited": visited,
+            "Schools left": max(len(part) - visited, 0),
+        })
+    if rows:
+        st.dataframe(pd.DataFrame(rows).sort_values("Person in charge"), use_container_width=True, hide_index=True)
+
+
+def outlet_progress_table(routes: pd.DataFrame, filters):
+    region, category, pic = filters
+    roster = load_outlet_roster(str(WORKBOOK))
+    if region != "All":
+        roster = roster[roster["REGION"] == region]
+    if category != "All":
+        roster = roster[roster["CATEGORY"] == category]
+    rows = []
+    for _, outlet in roster.sort_values(["CATEGORY", "OUTLET"]).iterrows():
+        part = routes[routes["OUTLET_KEY"] == outlet["OUTLET_KEY"]]
+        if pic != "All":
+            part = part[part["ASSIGNED PIC"] == pic]
+            if part.empty:
+                continue
+        if part.empty and outlet["CATEGORY"].lower() == "franchise":
+            rows.append({
+                "Outlet": outlet["OUTLET"],
+                "Category": outlet["CATEGORY"],
+                "Person in charge": outlet["PERSON"],
+                "Route schools": "Not routed",
+                "Received": "—",
+                "Rejected": "—",
+                "Visited (received + rejected)": "Not routed",
+                "Schools left": "Not routed",
+            })
+            continue
+
+        total = len(part)
+        received = int(part["SUCCESS"].sum())
+        rejected = int(part["REJECTED"].sum())
+        visited = received + rejected
+        rows.append({
+            "Outlet": outlet["OUTLET"],
+            "Category": outlet["CATEGORY"],
+            "Person in charge": ", ".join(sorted(part["ASSIGNED PIC"].dropna().unique())) or outlet["PERSON"],
+            "Route schools": total,
+            "Received": received,
+            "Rejected": rejected,
+            "Visited (received + rejected)": visited,
+            "Schools left": max(total - visited, 0),
+        })
+
+    st.caption("Visited counts schools marked Received or Rejected. Franchise outlets are listed as not routed.")
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 def progress_pie(df: pd.DataFrame, title: str, mode: str):
     """Create a labeled donut chart for school results or voucher balance."""
     if mode == "schools":
-        received = int((df["GIVEN"] & ~df["REJECTED"]).sum())
+        received = int(df["SUCCESS"].sum())
         rejected = int(df["REJECTED"].sum())
         pending = max(len(df) - received - rejected, 0)
         labels = ["Received schools", "Rejected schools", "Pending schools"]
@@ -290,6 +454,7 @@ def filtered_school_list(
     key: str,
     show_status_filter: bool = True,
     include_distribution: bool = True,
+    status_filter: str | None = None,
 ):
     if show_status_filter:
         left, right = st.columns(2)
@@ -299,13 +464,16 @@ def filtered_school_list(
             key=f"status_{key}",
         )
         search = right.text_input("Search school", key=f"search_{key}").strip().lower()
+    elif status_filter is not None:
+        status = status_filter
+        search = st.text_input("Search school", key=f"search_{key}").strip().lower()
     else:
         status = "All results"
         search = st.text_input("Search school", key=f"search_{key}").strip().lower()
 
     result = df.copy()
     if status == "Received":
-        result = result[result["GIVEN"] & ~result["REJECTED"]]
+        result = result[result["SUCCESS"] & ~result["REJECTED"]]
     elif status == "Rejected":
         result = result[result["REJECTED"]]
     elif status == "Pending":
@@ -314,7 +482,10 @@ def filtered_school_list(
     if search:
         result = result[result["NAMA SEKOLAH"].astype(str).str.lower().str.contains(search, na=False)]
 
-    cols = ["REGION", "MANAGER", "LEVEL", "NAMA SEKOLAH", "NEAREST OUTLET", "STATUS"]
+    cols = [
+        "REGION", "OUTLET_CATEGORY", "ASSIGNED PIC", "MANAGER",
+        "LEVEL", "NAMA SEKOLAH", "NEAREST OUTLET", "STATUS",
+    ]
     if include_distribution:
         cols += [
             "QTY GIVEN", "STAFF NAME", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON"
@@ -323,20 +494,11 @@ def filtered_school_list(
     st.dataframe(result[cols], use_container_width=True, hide_index=True)
 
 
-def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str):
+def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str, assigned_pic: str = ""):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    path = WORKBOOK
-    wb = load_workbook(path)
-    ws = wb[row["_SHEET"]]
-    header = int(row["_HEADER_ROW"])
-    headers = {
-        clean(ws.cell(header, c).value).upper(): c
-        for c in range(1, ws.max_column + 1)
-        if ws.cell(header, c).value is not None
-    }
     date_value = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%Y-%m-%d") if status != "Pending" else ""
     values = {
         "QTY GIVEN": qty,
@@ -346,6 +508,38 @@ def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: s
         "STATUS": status,
         "REJECTION REASON": reason,
         "DATE": date_value,
+        "ASSIGNED PIC": assigned_pic,
+    }
+
+    if google_sheets_enabled():
+        from gspread.utils import rowcol_to_a1
+
+        ws = _spreadsheet().worksheet(str(row["_SHEET"]))
+        header = int(row["_HEADER_ROW"])
+        current_headers = ws.row_values(header)
+        headers = {clean(value).upper(): index + 1 for index, value in enumerate(current_headers) if clean(value)}
+        updates = []
+        for name, value in values.items():
+            column = headers.get(name)
+            if column is None:
+                column = len(current_headers) + 1
+                updates.append({"range": rowcol_to_a1(header, column), "values": [[name]]})
+                current_headers.append(name)
+                headers[name] = column
+            updates.append({"range": rowcol_to_a1(int(row["_EXCEL_ROW"]), column), "values": [[value]]})
+        ws.batch_update(updates, value_input_option="USER_ENTERED")
+        load_routes.clear()
+        load_outlet_roster.clear()
+        return
+
+    path = WORKBOOK
+    wb = load_workbook(path)
+    ws = wb[row["_SHEET"]]
+    header = int(row["_HEADER_ROW"])
+    headers = {
+        clean(ws.cell(header, c).value).upper(): c
+        for c in range(1, ws.max_column + 1)
+        if ws.cell(header, c).value is not None
     }
     for name, value in values.items():
         col = headers.get(name)
