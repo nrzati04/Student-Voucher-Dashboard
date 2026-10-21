@@ -163,7 +163,7 @@ def load_routes(path_text: str) -> pd.DataFrame:
                 df[col] = 0
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON"):
+        for col in ("STATUS", "STAFF NAME", "DATE", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "PERSON MET", "EVENT REMARKS"):
             if col not in df:
                 df[col] = ""
             df[col] = df[col].map(clean)
@@ -494,13 +494,17 @@ def filtered_school_list(
     ]
     if include_distribution:
         cols += [
-            "QTY GIVEN", "STAFF NAME", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON"
+            "QTY GIVEN", "PERSON MET", "STAFF NAME", "CONTACT NUMBER", "EMAIL ADDRESS",
+            "REJECTION REASON", "EVENT REMARKS",
         ]
     cols = [column for column in cols if column in result.columns]
     st.dataframe(result[cols].rename(columns={"AREA": "Area"}), use_container_width=True, hide_index=True)
 
 
-def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str, reason: str, assigned_pic: str = ""):
+def save_school_update(
+    row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str,
+    reason: str, assigned_pic: str = "", person_met: str = "", event_remarks: str = "",
+):
     """Write one submitted school update into its original manager route row."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -515,6 +519,8 @@ def save_school_update(row: pd.Series, status: str, qty: int, pic: str, phone: s
         "REJECTION REASON": reason,
         "DATE": date_value,
         "ASSIGNED PIC": assigned_pic,
+        "PERSON MET": person_met,
+        "EVENT REMARKS": event_remarks,
     }
 
     if google_sheets_enabled():
