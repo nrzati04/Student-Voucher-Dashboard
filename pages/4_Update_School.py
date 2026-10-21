@@ -89,7 +89,7 @@ with record_panel:
                     height=90,
                 )
             with recipient_column:
-                st.markdown("**Person met and contact (optional)**")
+                st.markdown("**Person met and contact**")
                 person_options = ["Not recorded", "Teacher", "Principal", "PK HEM", "PK Koko", "Officer", "Guard", "PK1", "Other"]
                 saved_person_met = str(row.get("PERSON MET", "") or "Not recorded")
                 if saved_person_met not in person_options:
@@ -100,17 +100,17 @@ with record_panel:
                     index=person_options.index(saved_person_met),
                 )
                 recipient_name = st.text_input(
-                    "Name of person met (optional)",
+                    "Name of person met",
                     value=str(row.get("STAFF NAME", "") or ""),
                     placeholder="e.g. Puan Aina",
                 )
                 phone = st.text_input(
-                    "Contact number (optional)",
+                    "Contact number",
                     value=str(row.get("CONTACT NUMBER", "") or ""),
                     placeholder="e.g. 012-345 6789",
                 )
                 email = st.text_input(
-                    "Email address (optional)",
+                    "Email address",
                     value=str(row.get("EMAIL ADDRESS", "") or ""),
                     placeholder="e.g. office@school.edu.my",
                 )
