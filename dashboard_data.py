@@ -191,6 +191,21 @@ def metric_cards(df: pd.DataFrame, include_vouchers: bool = True):
     given_schools = int(df["GIVEN"].sum())
     rejected = int(df["REJECTED"].sum())
     left = max(total_schools - given_schools, 0)
+    if not include_vouchers:
+        received = int(df["SUCCESS"].sum())
+        visited = received + rejected
+        schools_left = max(total_schools - visited, 0)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total schools", f"{total_schools:,}")
+        c2.metric("Primary schools", f"{primary:,}")
+        c3.metric("Secondary schools", f"{secondary:,}")
+        c4.metric("Schools left to visit", f"{schools_left:,}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Received schools", f"{received:,}")
+        c2.metric("Rejected schools", f"{rejected:,}")
+        c3.metric("Visited (received + rejected)", f"{visited:,}")
+        return
+
     c1, c2, c3 = st.columns(3)
     c1.metric("Total schools", f"{total_schools:,}")
     c2.metric("Primary schools", f"{primary:,}")
@@ -202,15 +217,6 @@ def metric_cards(df: pd.DataFrame, include_vouchers: bool = True):
         c2.metric("Rejected schools", f"{rejected:,}")
         c3.metric("Schools left", f"{left:,}")
         c4.metric("% schools received", f"{(given_schools/total_schools*100) if total_schools else 0:.1f}%")
-    else:
-        received = int(df["SUCCESS"].sum())
-        visited = received + rejected
-        schools_left = max(total_schools - visited, 0)
-        c1.metric("Received schools", f"{received:,}")
-        c2.metric("Rejected schools", f"{rejected:,}")
-        c3.metric("Visited (received + rejected)", f"{visited:,}")
-        c4.metric("Schools left to visit", f"{schools_left:,}")
-
     if include_vouchers:
         planned = int(df["TOTAL"].sum())
         issued = int(df["QTY GIVEN"].sum())
@@ -293,7 +299,7 @@ def manager_table(df: pd.DataFrame, include_vouchers: bool = True):
 
 def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
     status_col, region_col, pic_col = st.columns([1, 1, 1.5])
-    status = status_col.selectbox("School result", ["All", "Received", "Pending", "Rejected"], key="overview_status")
+    status = status_col.selectbox("School result", ["All", "Received", "Rejected", "Pending", "Visited"], key="overview_status")
     regions = ["All", "KV", "Northern", "Southern"]
     region = region_col.selectbox("Region", regions, key="overview_region")
     manager_source = df if region == "All" else df[df["REGION"] == region]
@@ -308,6 +314,29 @@ def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
     st.caption(f"Showing {len(result):,} routed schools · {region} · {manager}")
     st.caption(f"School result filter applies to the school list: {status}.")
     return result, (region, manager), status
+
+
+def route_filters(df: pd.DataFrame, key: str, include_manager: bool = True) -> pd.DataFrame:
+    """Filter a school-level or manager page by region and, when needed, manager."""
+    if include_manager:
+        region_col, manager_col = st.columns([1, 1.4])
+    else:
+        region_col = st.columns(1)[0]
+        manager_col = None
+
+    region_options = ["All"] + sorted(df["REGION"].dropna().unique().tolist())
+    region = region_col.selectbox("Region", region_options, key=f"{key}_region")
+    result = df.copy() if region == "All" else df[df["REGION"] == region].copy()
+
+    manager = "All"
+    if include_manager:
+        manager_options = ["All"] + sorted(result["MANAGER"].dropna().unique().tolist())
+        manager = manager_col.selectbox("Manager", manager_options, key=f"{key}_manager")
+        if manager != "All":
+            result = result[result["MANAGER"] == manager]
+
+    st.caption(f"Showing {len(result):,} schools · {region} · {manager}")
+    return result
 
 
 def region_table(df: pd.DataFrame):
@@ -349,7 +378,7 @@ def person_progress_table(routes: pd.DataFrame):
             "Schools left": max(len(part) - visited, 0),
         })
     if rows:
-        st.dataframe(pd.DataFrame(rows).sort_values("Manager"), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows).sort_values("Manager"), use_container_width=True, hide_index=True, height=320)
 
 
 def area_progress_table(routes: pd.DataFrame, filters):
@@ -378,7 +407,7 @@ def area_progress_table(routes: pd.DataFrame, filters):
         })
 
     st.caption("Visited counts schools marked Received or Rejected. Area names come from the route sheets.")
-    st.dataframe(pd.DataFrame(rows).sort_values(["Region", "Area"]), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows).sort_values(["Region", "Area"]), use_container_width=True, hide_index=True, height=340)
 
 
 def progress_pie(df: pd.DataFrame, title: str, mode: str):
@@ -403,7 +432,7 @@ def progress_pie(df: pd.DataFrame, title: str, mode: str):
                       hovertemplate="%{label}: %{value:,}<extra></extra>")
     fig.update_layout(template="plotly_white", title=title,
                       title_font=dict(color="#111111", size=17),
-                      height=300,
+                      height=260,
                       margin=dict(t=48, b=10, l=8, r=8),
                       legend=dict(orientation="h", yanchor="bottom", y=-0.15,
                                   xanchor="center", x=0.5),
@@ -422,7 +451,7 @@ def filtered_school_list(
         left, right = st.columns(2)
         status = left.selectbox(
             "Filter by result",
-            ["All results", "Received", "Rejected", "Pending"],
+            ["All results", "Received", "Rejected", "Pending", "Visited"],
             key=f"status_{key}",
         )
         search = right.text_input("Search school", key=f"search_{key}").strip().lower()
@@ -440,6 +469,8 @@ def filtered_school_list(
         result = result[result["REJECTED"]]
     elif status == "Pending":
         result = result[~result["SUCCESS"] & ~result["REJECTED"]]
+    elif status == "Visited":
+        result = result[result["SUCCESS"] | result["REJECTED"]]
 
     if search:
         result = result[result["NAMA SEKOLAH"].astype(str).str.lower().str.contains(search, na=False)]
