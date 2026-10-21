@@ -14,10 +14,10 @@ part = route_filters(part, "manager_page", include_manager=False)
 st.markdown(f"### {selected}")
 metric_cards(part, include_vouchers=False)
 
-st.subheader("By school level")
-level_table(part, include_vouchers=False)
+with st.expander("Progress by school level", expanded=False):
+    level_table(part, include_vouchers=False)
 
-st.subheader("Schools for this manager")
-filtered_school_list(part, "manager")
+with st.expander("Schools for this manager", expanded=False):
+    filtered_school_list(part, "manager")
 
 render_footer()
