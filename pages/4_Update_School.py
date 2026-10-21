@@ -59,6 +59,13 @@ with record_panel:
         else:
             default_status = "Pending"
 
+        qty_not_provided = st.checkbox(
+            "Voucher quantity was not provided",
+            value=str(row.get("QTY NOT PROVIDED", "") or "").strip().lower() in {"yes", "true", "1"},
+            key=f"qty_not_provided_{row['_EXCEL_ROW']}_{row['_SHEET']}",
+            help="Use this when the school confirmed receipt but did not share the voucher amount.",
+        )
+
         with st.form("update_form"):
             outcome_column, recipient_column = st.columns(2, gap="large")
             with outcome_column:
@@ -69,19 +76,17 @@ with record_panel:
                     index=["Pending", "Received", "Rejected"].index(default_status),
                     help="Choose Received after handover, Rejected if the school declined, or Pending if no result is recorded.",
                 )
-                qty_not_provided = st.checkbox(
-                    "Voucher quantity was not provided",
-                    value=str(row.get("QTY NOT PROVIDED", "") or "").strip().lower() in {"yes", "true", "1"},
-                    help="Use this when the school confirmed receipt but did not share the voucher amount.",
-                )
-                qty = st.number_input(
-                    "Voucher quantity delivered",
-                    min_value=0,
-                    value=int(row["QTY GIVEN"]),
-                    step=1,
-                    help="Enter the number of vouchers handed to the school.",
-                    disabled=qty_not_provided,
-                )
+                if qty_not_provided:
+                    st.caption("Voucher amount will be saved as not provided.")
+                    qty = 0
+                else:
+                    qty = st.number_input(
+                        "Voucher quantity delivered",
+                        min_value=0,
+                        value=int(row["QTY GIVEN"]),
+                        step=1,
+                        help="Enter the number of vouchers handed to the school.",
+                    )
                 reason = st.text_input(
                     "Reason for rejection (if applicable)",
                     value=str(row.get("REJECTION REASON", "") or ""),
