@@ -75,6 +75,9 @@ def apply_theme():
         background: rgba(255,255,255,0.14) !important;
         color: #ffffff !important;
     }
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] li:first-child [data-testid="stSidebarNavLink"] {
+        text-transform: capitalize;
+    }
     section[data-testid="stSidebar"] .stButton > button {
         background: #C8202F !important;
         border: 1px solid #C8202F !important;
