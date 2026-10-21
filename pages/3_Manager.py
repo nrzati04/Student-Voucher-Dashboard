@@ -1,7 +1,7 @@
 """Manager / PIC page"""
 
 import streamlit as st
-from dashboard_data import page_setup, metric_cards, level_table, filtered_school_list, route_filters
+from dashboard_data import page_setup, level_table, filtered_school_list, route_filters
 from styles import render_footer
 
 routes = page_setup("Manager / PIC")
@@ -16,8 +16,6 @@ with region_col:
     part = route_filters(part, "manager_page", include_manager=False, show_count=False)
 st.markdown(f"### {selected}")
 st.caption(f"Showing {len(part):,} schools")
-with st.expander("Manager summary", expanded=False):
-    metric_cards(part, include_vouchers=False)
 
 with st.expander("Progress by school level", expanded=False):
     level_table(part, include_vouchers=False)
