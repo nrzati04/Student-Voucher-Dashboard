@@ -37,12 +37,11 @@ with selector_panel:
         options[label] = idx
     selected = st.selectbox("School", list(options))
     row = routes.loc[options[selected]]
-    current_assignee = str(row.get("ASSIGNED PIC", "") or "Unassigned")
 
     status_now = str(row.get("STATUS", "") or "")
     status_label = status_now or "Pending"
     st.markdown(f"### {row['NAMA SEKOLAH']}")
-    st.caption(f"{row['LEVEL']} · Area: {row.get('AREA', '—')} · Route manager: {manager}")
+    st.caption(f"{row['LEVEL']} · Area: {row.get('AREA', '—')} · Manager: {manager}")
     metric_left, metric_right = st.columns(2)
     metric_left.metric("Current result", status_label)
     metric_right.metric("Planned vouchers", f"{int(row['TOTAL']):,}")
@@ -89,7 +88,7 @@ with record_panel:
                     height=90,
                 )
             with recipient_column:
-                st.markdown("**Person met and contact**")
+                st.markdown("**Person met and contact (optional)**")
                 person_options = ["Not recorded", "Teacher", "Principal", "PK HEM", "PK Koko", "Officer", "Guard", "PK1", "Other"]
                 saved_person_met = str(row.get("PERSON MET", "") or "Not recorded")
                 if saved_person_met not in person_options:
@@ -100,17 +99,17 @@ with record_panel:
                     index=person_options.index(saved_person_met),
                 )
                 recipient_name = st.text_input(
-                    "Name of person met",
+                    "Name of person met (optional)",
                     value=str(row.get("STAFF NAME", "") or ""),
                     placeholder="e.g. Puan Aina",
                 )
                 phone = st.text_input(
-                    "Contact number",
+                    "Contact number (optional)",
                     value=str(row.get("CONTACT NUMBER", "") or ""),
                     placeholder="e.g. 012-345 6789",
                 )
                 email = st.text_input(
-                    "Email address",
+                    "Email address (optional)",
                     value=str(row.get("EMAIL ADDRESS", "") or ""),
                     placeholder="e.g. office@school.edu.my",
                 )
@@ -128,7 +127,7 @@ with record_panel:
                 try:
                     save_school_update(
                         row, status, int(qty), recipient_name.strip(), phone.strip(), email.strip(),
-                        reason.strip(), current_assignee, person_met, event_remarks.strip(),
+                        reason.strip(), person_met, event_remarks.strip(),
                     )
                     st.success(f"Record saved for {row['NAMA SEKOLAH']}.")
                     st.rerun()
@@ -138,7 +137,7 @@ with record_panel:
                     st.error(f"Unable to save the record: {exc}")
 
     with view_tab:
-        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Assigned PIC:** {current_assignee}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
+        st.markdown(f"**School:** {row['NAMA SEKOLAH']}  \n**Manager:** {manager}  \n**Result:** {status_label}  \n**Vouchers delivered:** {int(row['QTY GIVEN']):,}")
         st.markdown(f"**Person met:** {row.get('PERSON MET', '') or '—'}  \n**Name:** {row.get('STAFF NAME', '') or '—'}  \n**Contact:** {row.get('CONTACT NUMBER', '') or '—'}  \n**Email:** {row.get('EMAIL ADDRESS', '') or '—'}")
         if row.get("REJECTION REASON", ""):
             st.markdown(f"**Rejection reason:** {row['REJECTION REASON']}")
@@ -152,7 +151,7 @@ with record_panel:
         confirm = st.checkbox("Confirm clearing this entry", key=f"confirm_clear_{row['_EXCEL_ROW']}")
         if st.button("Clear distribution entry", disabled=not confirm):
             try:
-                save_school_update(row, "Pending", 0, "", "", "", "", current_assignee, "", "")
+                save_school_update(row, "Pending", 0, "", "", "", "", "", "")
                 st.success("Distribution entry cleared.")
                 st.rerun()
             except PermissionError:
