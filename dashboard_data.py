@@ -531,6 +531,12 @@ def save_school_update(
         header = int(row["_HEADER_ROW"])
         current_headers = ws.row_values(header)
         headers = {clean(value).upper(): index + 1 for index, value in enumerate(current_headers) if clean(value)}
+        missing_headers = [name for name in values if name not in headers]
+        required_columns = len(current_headers) + len(missing_headers)
+        if required_columns > ws.col_count:
+            # Imported workbook tabs can be limited to A:Z. Expand the grid
+            # before writing new tracking fields such as QTY NOT PROVIDED.
+            ws.add_cols(required_columns - ws.col_count)
         updates = []
         for name, value in values.items():
             column = headers.get(name)
@@ -571,4 +577,3 @@ def save_school_update(
         if temp_path.exists():
             temp_path.unlink()
     load_routes.clear()
-
