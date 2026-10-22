@@ -379,9 +379,10 @@ def person_progress_table(routes: pd.DataFrame):
         received = int(part["SUCCESS"].sum())
         rejected = int(part["REJECTED"].sum())
         visited = received + rejected
+        areas = sorted({clean(area) for area in part["AREA"].dropna() if clean(area)})
         rows.append({
             "Manager": clean(person) or "Unassigned",
-            "Areas": ", ".join(sorted(part["AREA"].dropna().map(clean).unique())),
+            "Areas": ", ".join(areas),
             "Total schools": len(part),
             "Primary": int((part["LEVEL"].str.lower() == "primary").sum()),
             "Secondary": int((part["LEVEL"].str.lower() == "secondary").sum()),
