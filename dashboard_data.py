@@ -184,7 +184,9 @@ def page_setup(title: str) -> pd.DataFrame:
     try:
         routes = load_routes(str(WORKBOOK))
     except Exception as exc:
-        st.error(f"Could not load dashboard data: {exc}")
+        # Include the exception type and repr because some Google API exceptions
+        # have an empty str(exc), which otherwise leaves the user with a blank error.
+        st.error(f"Could not load dashboard data ({type(exc).__name__}): {exc!r}")
         if sheets_enabled:
             st.info("Google Sheets settings were detected. Check that the service account has Editor access and that the required worksheet tabs still exist.")
         else:
