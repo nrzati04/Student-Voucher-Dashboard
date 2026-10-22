@@ -16,10 +16,7 @@ WORKBOOK = Path(__file__).parent / "Student_Voucher_Route_Plan_2026_v3.xlsx"
 
 def google_sheets_enabled() -> bool:
     """Use Google Sheets when its ID and service-account credentials are configured."""
-    try:
-        return bool(st.secrets.get("GOOGLE_SHEET_ID") and st.secrets.get("gcp_service_account"))
-    except Exception:
-        return False
+    return bool(st.secrets.get("GOOGLE_SHEET_ID") and st.secrets.get("gcp_service_account"))
 
 
 @st.cache_resource(show_spinner=False)
@@ -86,7 +83,11 @@ def load_outlet_roster(path_text: str) -> pd.DataFrame:
 def load_routes(path_text: str) -> pd.DataFrame:
     path = Path(path_text)
     if not google_sheets_enabled() and not path.exists():
-        raise FileNotFoundError(f"Workbook not found: {path}")
+        raise FileNotFoundError(
+            "Google Sheets mode is not active and no local workbook is available. "
+            "In Streamlit Community Cloud, check Settings → Secrets for both "
+            "GOOGLE_SHEET_ID and the [gcp_service_account] section."
+        )
 
     frames = []
     if google_sheets_enabled():
@@ -166,19 +167,28 @@ def page_setup(title: str) -> pd.DataFrame:
     apply_theme()
     render_top_navigation()
 
+    try:
+        sheets_enabled = google_sheets_enabled()
+    except Exception as exc:
+        st.error(f"Could not read Streamlit secrets: {exc}")
+        st.stop()
+
     with st.sidebar:
         if st.button("🔄 Refresh data", use_container_width=True):
             load_routes.clear()
             load_outlet_roster.clear()
             st.rerun()
         st.markdown("---")
-        st.caption("Updates save to Google Sheets." if google_sheets_enabled() else "Local updates save to the Excel workbook.")
+        st.caption("Updates save to Google Sheets." if sheets_enabled else "Local updates save to the Excel workbook.")
 
     try:
         routes = load_routes(str(WORKBOOK))
     except Exception as exc:
-        st.error(f"Could not load workbook: {exc}")
-        st.info(f"Expected file at: `{WORKBOOK}`")
+        st.error(f"Could not load dashboard data: {exc}")
+        if sheets_enabled:
+            st.info("Google Sheets settings were detected. Check that the service account has Editor access and that the required worksheet tabs still exist.")
+        else:
+            st.info("The app is not detecting its Google Sheets settings. Check this app’s Streamlit Cloud Settings → Secrets, then save and restart the app.")
         st.stop()
 
     return routes
