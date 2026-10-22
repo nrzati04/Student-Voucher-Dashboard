@@ -357,6 +357,84 @@ def apply_theme():
         background: #fff5f5 !important;
     }
 
+    /* ===== Mobile navigation ===== */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-left: 0.65rem !important;
+            padding-right: 0.65rem !important;
+        }
+        .st-key-usp_topnav {
+            padding: 0.55rem 0.65rem !important;
+            margin-bottom: 0.8rem !important;
+        }
+        /* Keep the brand on its own compact row; Streamlit otherwise stacks
+           each of the five navigation columns vertically on narrow screens. */
+        .st-key-usp_topnav > div > [data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.45rem !important;
+        }
+        .st-key-usp_topnav > div > [data-testid="stHorizontalBlock"] > div {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex: 1 1 auto !important;
+        }
+        .usp-nav-brand {
+            min-height: 54px !important;
+            gap: 9px !important;
+        }
+        .usp-nav-brand img {
+            width: 72px !important;
+            height: 52px !important;
+            flex-basis: 72px !important;
+        }
+        .usp-nav-brand strong {
+            font-size: 0.95rem !important;
+        }
+        .usp-nav-brand span {
+            font-size: 0.7rem !important;
+        }
+        .st-key-usp_nav_links {
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .st-key-usp_nav_links::-webkit-scrollbar {
+            display: none;
+        }
+        .st-key-usp_nav_links [data-testid="stHorizontalBlock"] {
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 0.25rem !important;
+            width: max-content !important;
+            min-width: 100% !important;
+        }
+        .st-key-usp_nav_links [data-testid="stHorizontalBlock"] > div {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: max-content !important;
+        }
+        .st-key-usp_nav_links a,
+        .st-key-usp_nav_links [data-testid*="stPageLink"] {
+            justify-content: flex-start !important;
+            min-height: 38px !important;
+            padding: 0.3rem 0.55rem !important;
+            font-size: 0.86rem !important;
+        }
+        div[data-testid="stMetric"] {
+            min-height: 66px !important;
+            padding: 6px 8px !important;
+        }
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+        .usp-footer {
+            padding: 12px !important;
+            font-size: 0.76rem !important;
+        }
+    }
+
     /* ===== Hide default Streamlit chrome ===== */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -377,12 +455,13 @@ def render_top_navigation():
             </div>
             """, unsafe_allow_html=True)
         with links:
-            nav = st.columns(5, vertical_alignment="center")
-            nav[0].page_link("student_voucher_dashboard.py", label="Overview", icon="🏠")
-            nav[1].page_link("pages/1_Primary.py", label="Primary", icon="🏫")
-            nav[2].page_link("pages/2_Secondary.py", label="Secondary", icon="📚")
-            nav[3].page_link("pages/3_Manager.py", label="Manager", icon="👤")
-            nav[4].page_link("pages/4_Update_School.py", label="Update School", icon="✏️")
+            with st.container(key="usp_nav_links"):
+                nav = st.columns(5, vertical_alignment="center")
+                nav[0].page_link("student_voucher_dashboard.py", label="Overview", icon="🏠")
+                nav[1].page_link("pages/1_Primary.py", label="Primary", icon="🏫")
+                nav[2].page_link("pages/2_Secondary.py", label="Secondary", icon="📚")
+                nav[3].page_link("pages/3_Manager.py", label="Manager", icon="👤")
+                nav[4].page_link("pages/4_Update_School.py", label="Update School", icon="✏️")
 
 
 def render_footer():
@@ -390,7 +469,7 @@ def render_footer():
     st.markdown("""
     <div class="usp-footer">
         <strong>US Pizza Malaysia</strong> · Student Voucher Programme 2026<br>
-        Data source: Route Plan workbook · Updates write back to Google Sheets<br>
+        Data source: Route Plan workbook · Updates write back to Excel<br>
         Need help? Contact Operations / Area Manager team
     </div>
     """, unsafe_allow_html=True)
