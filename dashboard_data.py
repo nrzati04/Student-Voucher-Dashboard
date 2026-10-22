@@ -391,7 +391,17 @@ def person_progress_table(routes: pd.DataFrame):
             "Schools left": max(len(part) - visited, 0),
         })
     if rows:
-        st.dataframe(pd.DataFrame(rows).sort_values("Manager"), use_container_width=True, hide_index=True, height=320)
+        summary = pd.DataFrame(rows).sort_values("Manager")
+        wrapped_summary = summary.style.set_properties(
+            subset=["Areas"],
+            **{
+                "white-space": "normal",
+                "overflow-wrap": "anywhere",
+                "min-width": "260px",
+                "max-width": "420px",
+            },
+        )
+        st.table(wrapped_summary)
 
 
 def area_progress_table(routes: pd.DataFrame, filters):
@@ -577,3 +587,4 @@ def save_school_update(
         if temp_path.exists():
             temp_path.unlink()
     load_routes.clear()
+
