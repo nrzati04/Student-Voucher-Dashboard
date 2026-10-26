@@ -127,7 +127,13 @@ def load_routes(path_text: str) -> pd.DataFrame:
         df["OUTLET_STATE"] = df["OUTLET_KEY"].map(
             lambda key: outlet_lookup.get(key, {}).get("STATE", "")
         )
-        df["REGION"] = df["OUTLET_STATE"].map(region_for_state)
+        entered_region = (
+            df["REGION"].map(lambda value: {"kv": "KV", "klang valley": "KV", "northern": "Northern", "north": "Northern", "southern": "Southern", "south": "Southern"}.get(clean(value).lower(), ""))
+            if "REGION" in df.columns
+            else pd.Series("", index=df.index)
+        )
+        inferred_region = df["OUTLET_STATE"].map(region_for_state)
+        df["REGION"] = entered_region.where(entered_region != "", inferred_region)
         df["_SHEET"] = sheet
         df["_HEADER_ROW"] = header_row + 1
         # `raw` keeps its original worksheet row index, so index + 1 is the Excel row.
