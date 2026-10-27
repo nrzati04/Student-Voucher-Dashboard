@@ -697,3 +697,28 @@ def export_report(routes: pd.DataFrame) -> bytes:
 
 
 
+
+
+def level_summary_panel(df: pd.DataFrame, key: str):
+    """Show five school-level totals beside a received/rejected/pending donut."""
+    total = len(df)
+    received = int(df["SUCCESS"].sum())
+    rejected = int(df["REJECTED"].sum())
+    visited = received + rejected
+    pending = max(total - visited, 0)
+
+    metrics_column, chart_column = st.columns([1.8, 1], gap="large")
+    with metrics_column:
+        first_row = st.columns(3)
+        first_row[0].metric("Total schools", f"{total:,}")
+        first_row[1].metric("Received", f"{received:,}")
+        first_row[2].metric("Rejected", f"{rejected:,}")
+        second_row = st.columns(2)
+        second_row[0].metric("Visited", f"{visited:,}")
+        second_row[1].metric("Schools left", f"{pending:,}")
+    with chart_column:
+        st.plotly_chart(
+            progress_pie(df, "School result", "schools"),
+            use_container_width=True,
+            key=f"{key}_school_result_pie",
+        )
