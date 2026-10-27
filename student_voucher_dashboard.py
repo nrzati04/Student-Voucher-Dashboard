@@ -14,7 +14,7 @@ st.markdown("Track school visits and voucher distribution across Malaysia.")
 overview, overview_scope, school_status = overview_filters(routes)
 metric_cards(overview, include_vouchers=False)
 st.download_button(
-    "Download full report",
+    "Download Full Report",
     data=export_report(routes),
     file_name=f"student_voucher_report_{datetime.now().strftime('%Y%m%d')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
