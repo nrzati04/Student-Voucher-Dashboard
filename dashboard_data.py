@@ -329,8 +329,7 @@ def overview_filters(df: pd.DataFrame) -> pd.DataFrame:
         result = result[result["REGION"] == region]
     if manager != "All":
         result = result[result["MANAGER"] == manager]
-    st.caption(f"Showing {len(result):,} routed schools · {region} · {manager}")
-    st.caption(f"School result filter applies to the school list: {status}.")
+    st.caption(f"Showing {len(result):,} routed schools · {region} · {manager} · Filter: {status}.")
     return result, (region, manager), status
 
 
@@ -695,4 +694,6 @@ def export_report(routes: pd.DataFrame) -> bytes:
                 for cell in row:
                     cell.alignment = Alignment(vertical="top", wrap_text=True)
     return output.getvalue()
+
+
 
