@@ -439,15 +439,15 @@ def area_progress_table(routes: pd.DataFrame, filters):
     st.dataframe(pd.DataFrame(rows).sort_values(["Region", "Area"]), use_container_width=True, hide_index=True, height=340)
 
 
-def progress_pie(df: pd.DataFrame, title: str, mode: str):
+def progress_pie(df: pd.DataFrame, title: str, mode: str, height: int = 260):
     """Create a labeled donut chart for school results or voucher balance."""
     if mode == "schools":
         received = int(df["SUCCESS"].sum())
         rejected = int(df["REJECTED"].sum())
         pending = max(len(df) - received - rejected, 0)
-        labels = ["Received schools", "Rejected schools", "Pending schools"]
+        labels = ["Received", "Rejected", "Pending"]
         values = [received, rejected, pending]
-        colors = {"Received schools": "#C8202F", "Rejected schools": "#111111", "Pending schools": "#D9D9D9"}
+        colors = {"Received": "#C8202F", "Rejected": "#111111", "Pending": "#D9D9D9"}
     else:
         planned = int(df["TOTAL"].sum())
         issued = int(df["QTY GIVEN"].sum())
@@ -461,10 +461,9 @@ def progress_pie(df: pd.DataFrame, title: str, mode: str):
                       hovertemplate="%{label}: %{value:,}<extra></extra>")
     fig.update_layout(template="plotly_white", title=title,
                       title_font=dict(color="#111111", size=17),
-                      height=260,
+                      height=height,
                       margin=dict(t=48, b=10, l=8, r=8),
-                      legend=dict(orientation="h", yanchor="bottom", y=-0.15,
-                                  xanchor="center", x=0.5),
+                      legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5, font=dict(size=10)),
                       paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#111111"))
     return fig
 
@@ -700,25 +699,35 @@ def export_report(routes: pd.DataFrame) -> bytes:
 
 
 def level_summary_panel(df: pd.DataFrame, key: str):
-    """Show five school-level totals beside a received/rejected/pending donut."""
+    """Show compact school-level totals beside a received/rejected/pending donut."""
     total = len(df)
     received = int(df["SUCCESS"].sum())
     rejected = int(df["REJECTED"].sum())
     visited = received + rejected
     pending = max(total - visited, 0)
 
-    metrics_column, chart_column = st.columns([1.8, 1], gap="large")
-    with metrics_column:
-        first_row = st.columns(3)
-        first_row[0].metric("Total schools", f"{total:,}")
-        first_row[1].metric("Received", f"{received:,}")
-        first_row[2].metric("Rejected", f"{rejected:,}")
-        second_row = st.columns(2)
-        second_row[0].metric("Visited", f"{visited:,}")
-        second_row[1].metric("Schools left", f"{pending:,}")
-    with chart_column:
-        st.plotly_chart(
-            progress_pie(df, "School result", "schools"),
-            use_container_width=True,
-            key=f"{key}_school_result_pie",
-        )
+    st.markdown(f"""
+    <style>
+    .st-key-{key}_summary div[data-testid="stMetric"] {{ min-height: 62px !important; padding: 5px 9px !important; }}
+    .st-key-{key}_summary div[data-testid="stMetric"] [data-testid="stMetricValue"] {{ font-size: 1.25rem !important; }}
+    .st-key-{key}_summary div[data-testid="stMetric"] [data-testid="stMetricLabel"] {{ font-size: 0.72rem !important; }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key=f"{key}_summary"):
+        metrics_column, chart_column = st.columns([1.8, 1], gap="medium")
+        with metrics_column:
+            first_row = st.columns(3)
+            first_row[0].metric("Total schools", f"{total:,}")
+            first_row[1].metric("Received", f"{received:,}")
+            first_row[2].metric("Rejected", f"{rejected:,}")
+            second_row = st.columns(2)
+            second_row[0].metric("Visited", f"{visited:,}")
+            second_row[1].metric("Schools left", f"{pending:,}")
+        with chart_column:
+            st.plotly_chart(
+                progress_pie(df, "School result", "schools", height=215),
+                use_container_width=True,
+                key=f"{key}_school_result_pie",
+            )
+
