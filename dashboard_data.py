@@ -595,3 +595,104 @@ def save_school_update(
             temp_path.unlink()
     load_routes.clear()
 
+
+
+def export_report(routes: pd.DataFrame) -> bytes:
+    """Create one Excel download with summaries and detailed school tabs."""
+    from io import BytesIO
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    def summary_row(dimension: str, label: str, part: pd.DataFrame) -> dict:
+        total = len(part)
+        received = int(part["SUCCESS"].sum())
+        rejected = int(part["REJECTED"].sum())
+        visited = received + rejected
+        planned = int(part["TOTAL"].sum())
+        given = int(part["QTY GIVEN"].sum())
+        return {
+            dimension: label,
+            "Total schools": total,
+            "Primary": int((part["LEVEL"].str.lower() == "primary").sum()),
+            "Secondary": int((part["LEVEL"].str.lower() == "secondary").sum()),
+            "Received": received,
+            "Rejected": rejected,
+            "Visited (received + rejected)": visited,
+            "Pending / schools left": max(total - visited, 0),
+            "Planned vouchers": planned,
+            "Vouchers given": given,
+            "Voucher balance": max(planned - given, 0),
+        }
+
+    overall = pd.DataFrame([summary_row("Scope", "Overall", routes)])
+    region_rows = [summary_row("Region", (clean(name) or "Unassigned"), part)
+                   for name, part in routes.groupby("REGION", dropna=False)]
+    manager_rows = [summary_row("Manager", (clean(name) or "Unassigned"), part)
+                    for name, part in routes.groupby("MANAGER", dropna=False)]
+    by_region = pd.DataFrame(region_rows)
+    by_manager = pd.DataFrame(manager_rows)
+
+    source_columns = [
+        "REGION", "MANAGER", "LEVEL", "NAMA SEKOLAH", "AREA", "NEAREST OUTLET",
+        "STATUS", "TOTAL", "QTY GIVEN", "QTY NOT PROVIDED", "PERSON MET",
+        "STAFF NAME", "CONTACT NUMBER", "EMAIL ADDRESS", "REJECTION REASON", "EVENT REMARKS",
+    ]
+    details = routes[[col for col in source_columns if col in routes.columns]].copy()
+    details.insert(
+        details.columns.get_loc("STATUS") + 1 if "STATUS" in details.columns else len(details.columns),
+        "REPORT RESULT",
+        ["Rejected" if rejected else "Received" if received else "Pending"
+         for received, rejected in zip(routes["SUCCESS"], routes["REJECTED"])],
+    )
+    details = details.rename(columns={
+        "REGION": "Region", "MANAGER": "Manager", "LEVEL": "School level",
+        "NAMA SEKOLAH": "School", "AREA": "Area", "NEAREST OUTLET": "Nearest outlet",
+        "STATUS": "Recorded status", "REPORT RESULT": "Report result",
+        "TOTAL": "Planned vouchers", "QTY GIVEN": "Vouchers given",
+        "QTY NOT PROVIDED": "Voucher quantity not provided", "PERSON MET": "Person met",
+        "STAFF NAME": "Receiving person name", "CONTACT NUMBER": "Contact number",
+        "EMAIL ADDRESS": "Email address", "REJECTION REASON": "Rejection reason",
+        "EVENT REMARKS": "Event remarks",
+    })
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        overall.to_excel(writer, sheet_name="Overall", index=False)
+        by_region.to_excel(writer, sheet_name="By region", index=False)
+        by_manager.to_excel(writer, sheet_name="By manager", index=False)
+        details.to_excel(writer, sheet_name="All schools", index=False)
+
+        for region in ("KV", "Northern", "Southern", "Unassigned"):
+            part = details[details["Region"] == region]
+            if not part.empty:
+                part.to_excel(writer, sheet_name=f"{region} schools"[:31], index=False)
+
+        used_names = set(writer.book.sheetnames)
+        for manager, part in details.groupby("Manager", dropna=False):
+            safe = re.sub(r"[\\/*?:\[\]]", " ", clean(manager) or "Unassigned")
+            base = f"{safe[:22]} schools"[:31]
+            name = base
+            suffix = 2
+            while name in used_names:
+                ending = f" {suffix}"
+                name = f"{base[:31-len(ending)]}{ending}"
+                suffix += 1
+            used_names.add(name)
+            part.to_excel(writer, sheet_name=name, index=False)
+
+        for sheet in writer.book.worksheets:
+            sheet.freeze_panes = "A2"
+            sheet.auto_filter.ref = sheet.dimensions
+            for cell in sheet[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="C8202F")
+                cell.alignment = Alignment(wrap_text=True, vertical="center")
+            sheet.row_dimensions[1].height = 30
+            for cells in sheet.columns:
+                letter = cells[0].column_letter
+                width = min(max(max(len(str(c.value or "")) for c in cells[:100]) + 2, 12), 42)
+                sheet.column_dimensions[letter].width = width
+            for row in sheet.iter_rows(min_row=2):
+                for cell in row:
+                    cell.alignment = Alignment(vertical="top", wrap_text=True)
+    return output.getvalue()
+
