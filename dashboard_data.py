@@ -283,7 +283,7 @@ def level_table(df: pd.DataFrame, include_vouchers: bool = True):
             })
         rows.append(summary)
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={"Region": st.column_config.TextColumn("Region", width="small"), "Total schools": st.column_config.NumberColumn("Total schools", width="small"), "Primary": st.column_config.NumberColumn("Primary", width="small"), "Secondary": st.column_config.NumberColumn("Secondary", width="small"), "Received": st.column_config.NumberColumn("Received", width="small"), "Rejected": st.column_config.NumberColumn("Rejected", width="small"), "Visited": st.column_config.NumberColumn("Visited", width="small"), "Schools left": st.column_config.NumberColumn("Schools left", width="small")})
 
 
 def manager_table(df: pd.DataFrame, include_vouchers: bool = True):
@@ -374,7 +374,7 @@ def region_table(df: pd.DataFrame):
             "Schools left": max(len(part) - int(part["SUCCESS"].sum() + part["REJECTED"].sum()), 0),
         })
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True, column_config={"Region": st.column_config.TextColumn("Region", width="small"), "Total schools": st.column_config.NumberColumn("Total schools", width="small"), "Primary": st.column_config.NumberColumn("Primary", width="small"), "Secondary": st.column_config.NumberColumn("Secondary", width="small"), "Received": st.column_config.NumberColumn("Received", width="small"), "Rejected": st.column_config.NumberColumn("Rejected", width="small"), "Visited": st.column_config.NumberColumn("Visited", width="small"), "Schools left": st.column_config.NumberColumn("Schools left", width="small")})
 
 
 def person_progress_table(routes: pd.DataFrame):
@@ -730,4 +730,6 @@ def level_summary_panel(df: pd.DataFrame, key: str):
                 use_container_width=True,
                 key=f"{key}_school_result_pie",
             )
+
+
 

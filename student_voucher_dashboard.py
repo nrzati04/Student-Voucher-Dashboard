@@ -14,7 +14,7 @@ st.markdown("Track school visits and voucher distribution across Malaysia.")
 overview, overview_scope, school_status = overview_filters(routes)
 metric_cards(overview, include_vouchers=False)
 st.download_button(
-    "Download Full Report",
+    "Download full report (Excel)",
     data=export_report(routes),
     file_name=f"student_voucher_report_{datetime.now().strftime('%Y%m%d')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -22,7 +22,7 @@ st.download_button(
     key="download_full_report",
 )
 
-chart_column, region_column = st.columns([1, 1.15], gap="large")
+chart_column, region_column = st.columns([0.8, 1.4], gap="large")
 with chart_column:
     st.subheader("Progress at a glance")
     st.plotly_chart(
@@ -53,6 +53,7 @@ with st.expander("Find schools", expanded=False):
     )
 
 render_footer()
+
 
 
 
