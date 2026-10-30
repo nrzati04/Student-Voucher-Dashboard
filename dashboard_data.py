@@ -475,20 +475,26 @@ def filtered_school_list(
     include_distribution: bool = True,
     status_filter: str | None = None,
 ):
+    sort_options = ["School level", "Area", "Status"]
     if show_status_filter:
-        left, right = st.columns(2)
-        status = left.selectbox(
+        status_col, search_col, sort_col = st.columns([1, 1.4, 1])
+        status = status_col.selectbox(
             "Filter by result",
             ["All results", "Received", "Rejected", "Pending", "Visited"],
             key=f"status_{key}",
         )
-        search = right.text_input("Search school", key=f"search_{key}").strip().lower()
+        search = search_col.text_input("Search school", key=f"search_{key}").strip().lower()
+        arrange_by = sort_col.selectbox("Arrange by", sort_options, key=f"arrange_{key}")
     elif status_filter is not None:
+        search_col, sort_col = st.columns([1.4, 1])
         status = status_filter
-        search = st.text_input("Search school", key=f"search_{key}").strip().lower()
+        search = search_col.text_input("Search school", key=f"search_{key}").strip().lower()
+        arrange_by = sort_col.selectbox("Arrange by", sort_options, key=f"arrange_{key}")
     else:
+        search_col, sort_col = st.columns([1.4, 1])
         status = "All results"
-        search = st.text_input("Search school", key=f"search_{key}").strip().lower()
+        search = search_col.text_input("Search school", key=f"search_{key}").strip().lower()
+        arrange_by = sort_col.selectbox("Arrange by", sort_options, key=f"arrange_{key}")
 
     result = df.copy()
     if status == "Received":
@@ -503,18 +509,37 @@ def filtered_school_list(
     if search:
         result = result[result["NAMA SEKOLAH"].astype(str).str.lower().str.contains(search, na=False)]
 
-    cols = [
-        "REGION", "MANAGER",
-        "LEVEL", "NAMA SEKOLAH", "AREA", "STATUS",
+    result["_LEVEL_ORDER"] = result["LEVEL"].str.lower().map({"primary": 0, "secondary": 1}).fillna(2)
+    result["_REPORT_STATUS"] = [
+        "Rejected" if rejected else "Received" if received else "Pending"
+        for received, rejected in zip(result["SUCCESS"], result["REJECTED"])
     ]
+    result["_STATUS_ORDER"] = result["_REPORT_STATUS"].map({"Pending": 0, "Received": 1, "Rejected": 2})
+    result["STATUS"] = result["_REPORT_STATUS"]
+
+    if arrange_by == "School level":
+        sort_columns = ["_LEVEL_ORDER", "AREA", "_STATUS_ORDER", "NAMA SEKOLAH"]
+    elif arrange_by == "Area":
+        sort_columns = ["AREA", "_LEVEL_ORDER", "_STATUS_ORDER", "NAMA SEKOLAH"]
+    else:
+        sort_columns = ["_STATUS_ORDER", "REGION", "MANAGER", "_LEVEL_ORDER", "AREA", "NAMA SEKOLAH"]
+    result = result.sort_values(sort_columns, kind="stable", na_position="last")
+
+    cols = ["REGION", "MANAGER", "LEVEL", "NAMA SEKOLAH", "AREA", "STATUS"]
     if include_distribution:
         cols += [
             "QTY GIVEN", "PERSON MET", "STAFF NAME", "CONTACT NUMBER", "EMAIL ADDRESS",
             "REJECTION REASON", "EVENT REMARKS",
         ]
     cols = [column for column in cols if column in result.columns]
-    st.dataframe(result[cols].rename(columns={"AREA": "Area"}), use_container_width=True, hide_index=True)
-
+    st.dataframe(
+        result[cols].rename(columns={
+            "REGION": "Region", "MANAGER": "Manager", "LEVEL": "School level",
+            "NAMA SEKOLAH": "School", "AREA": "Area", "STATUS": "Status",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 def save_school_update(
     row: pd.Series, status: str, qty: int, pic: str, phone: str, email: str,
@@ -730,6 +755,7 @@ def level_summary_panel(df: pd.DataFrame, key: str):
                 use_container_width=True,
                 key=f"{key}_school_result_pie",
             )
+
 
 
 
