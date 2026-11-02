@@ -123,9 +123,6 @@ def show_answer(df: pd.DataFrame, plan: dict, key: str):
             fig.update_layout(template="plotly_white", height=360, margin=dict(t=20, b=10, l=8, r=8),
                               legend_title_text="", yaxis_title=None, xaxis_title=None)
             st.plotly_chart(fig, use_container_width=True, key=f"ask_chart_{key}")
-    with st.expander("How the question was read", expanded=False):
-        st.caption("Check this matches what you meant, especially for questions typed in your own words.")
-        st.json(plan)
 
 
 # ---------- the AI part (only this section talks to an AI service) ----------
@@ -225,7 +222,6 @@ with ai_tab:
                     show_answer(df, plan, "ai")
                 except Exception as exc:
                     st.error(f"Could not answer that: {exc}")
-        st.caption("AI can misread a question. Open 'How the question was read' and compare a few answers "
-                   "with the dashboard before relying on them.")
+        st.caption("AI can misread a question. Compare a few answers with the dashboard before relying on them.")
 
 render_footer()
