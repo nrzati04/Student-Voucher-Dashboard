@@ -199,6 +199,8 @@ def page_setup(title: str) -> pd.DataFrame:
             st.info("The app is not detecting its Google Sheets settings. Check this app’s Streamlit Cloud Settings → Secrets, then save and restart the app.")
         st.stop()
 
+    from ask_data_widget import render_global_ask_data
+    render_global_ask_data(routes)
     return routes
 
 
